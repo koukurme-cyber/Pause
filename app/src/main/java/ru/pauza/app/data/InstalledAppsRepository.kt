@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import ru.pauza.app.model.AppLaunchType
 import ru.pauza.app.model.InstalledApp
 
 class InstalledAppsRepository(private val context: Context) {
@@ -18,6 +19,19 @@ class InstalledAppsRepository(private val context: Context) {
         resolvePackage(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")))?.let(::add)
         resolvePackage(Intent(Intent.ACTION_SENDTO, Uri.parse("sms:112")))?.let(::add)
     }
+
+    fun loadAlwaysAllowedApps(): List<InstalledApp> = listOfNotNull(
+        resolveShortcut(
+            intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:")),
+            label = "Телефон",
+            launchType = AppLaunchType.PHONE,
+        ),
+        resolveShortcut(
+            intent = Intent(Intent.ACTION_SENDTO, Uri.parse("sms:")),
+            label = "Сообщения",
+            launchType = AppLaunchType.MESSAGES,
+        ),
+    )
 
     fun loadLaunchableApps(): List<InstalledApp> {
         val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
@@ -41,6 +55,35 @@ class InstalledAppsRepository(private val context: Context) {
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
             .toList()
+    }
+
+    fun launch(app: InstalledApp): Boolean {
+        val intent = when (app.launchType) {
+            AppLaunchType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))
+            AppLaunchType.MESSAGES -> Intent(Intent.ACTION_SENDTO, Uri.parse("sms:"))
+            AppLaunchType.PACKAGE -> pm.getLaunchIntentForPackage(app.packageName)
+        } ?: return false
+
+        return runCatching {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun resolveShortcut(
+        intent: Intent,
+        label: String,
+        launchType: AppLaunchType,
+    ): InstalledApp? {
+        val info = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) ?: return null
+        val pkg = info.activityInfo?.packageName ?: return null
+        return InstalledApp(
+            label = label,
+            packageName = pkg,
+            icon = runCatching { info.loadIcon(pm).toBitmapSafe(96, 96) }.getOrNull(),
+            launchType = launchType,
+        )
     }
 
     private fun resolvePackage(intent: Intent): String? =
