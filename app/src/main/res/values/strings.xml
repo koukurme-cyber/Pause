@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Пауза</string>
+    <string name="accessibility_description">Возвращает на экран Паузы при открытии запрещённых приложений во время активного таймера.</string>
 </resources>
