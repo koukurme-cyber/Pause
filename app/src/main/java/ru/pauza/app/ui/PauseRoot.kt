@@ -2,8 +2,11 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -284,6 +287,44 @@ private fun ReviewScreen(
                     if (!protectionEnabled) {
                         TextButton(onClick = { AccessibilityPauseBlocker.openSettings(context) }) {
                             Text("Разрешить")
+                        }
+                    }
+                }
+            }
+
+            if (!protectionEnabled) {
+                Spacer(Modifier.height(10.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Text(
+                            "Если Android пишет «Настройки с ограниченным доступом»",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "1. Откройте Настройки → Приложения → Пауза.\n" +
+                                "2. Нажмите ⋮ в правом верхнем углу.\n" +
+                                "3. Выберите «Разрешить настройки с ограниченным доступом».\n" +
+                                "4. Вернитесь сюда и снова нажмите «Разрешить».",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + context.packageName)
+                                )
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text("Открыть настройки Паузы")
                         }
                     }
                 }
