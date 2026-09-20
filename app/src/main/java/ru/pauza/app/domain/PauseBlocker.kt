@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
 
 interface PauseBlocker {
@@ -19,7 +20,7 @@ class AccessibilityPauseBlocker(private val context: Context) : PauseBlocker {
         fun isEnabled(context: Context): Boolean {
             val manager = context.getSystemService(AccessibilityManager::class.java)
             val component = ComponentName(context, PauseAccessibilityService::class.java)
-            return manager.getEnabledAccessibilityServiceList(AccessibilityManager.FEEDBACK_ALL_MASK)
+            return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
                 .any {
                     val info = it.resolveInfo.serviceInfo
                     info.packageName == component.packageName &&
