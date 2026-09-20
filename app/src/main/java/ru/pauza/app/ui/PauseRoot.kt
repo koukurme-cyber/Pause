@@ -519,7 +519,18 @@ private fun AppRow(
             AppIconSmall(app)
             Spacer(Modifier.width(10.dp))
             Text(app.label, Modifier.weight(1f), fontWeight = FontWeight.Medium)
-            Switch(checked = checked, onCheckedChange = onChecked)
+            Switch(
+                checked = checked,
+                onCheckedChange = onChecked,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = PauseGreen,
+                    checkedBorderColor = PauseGreen,
+                    uncheckedThumbColor = PauseMuted,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                    uncheckedBorderColor = PauseMuted,
+                )
+            )
         }
     }
 }
