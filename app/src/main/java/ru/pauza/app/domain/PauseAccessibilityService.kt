@@ -1,7 +1,7 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityWindowInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
