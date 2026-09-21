@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
@@ -535,7 +537,21 @@ private fun DurationCounter(
             Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(label, color = PauseMuted, fontSize = 10.sp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    color = PauseMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
             Spacer(Modifier.height(2.dp))
             Row(
                 Modifier.fillMaxWidth().height(34.dp),
@@ -749,20 +765,11 @@ private fun ActiveScreen(
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(PauseGreen),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "◷",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Image(
+                        painter = painterResource(R.drawable.ic_pause_clock),
+                        contentDescription = null,
+                        modifier = Modifier.size(56.dp)
+                    )
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(
