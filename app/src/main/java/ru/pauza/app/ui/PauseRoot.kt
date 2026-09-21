@@ -358,7 +358,7 @@ private fun SetupScreen(
             Modifier
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 10.dp)
+                .padding(horizontal = 18.dp, vertical = 7.dp)
         ) {
             Text("Пауза", fontSize = 29.sp, fontWeight = FontWeight.SemiBold)
             Text(
@@ -368,13 +368,13 @@ private fun SetupScreen(
                 lineHeight = 18.sp
             )
 
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(6.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Column(
-                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
                     Text(
                         "Длительность паузы",
@@ -382,7 +382,7 @@ private fun SetupScreen(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(3.dp))
                     DurationPicker(
                         duration = duration,
                         onChange = onDuration
@@ -390,25 +390,25 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = PauseWarning),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
                     "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 placeholder = { Text("Найти приложение") },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -424,7 +424,7 @@ private fun SetupScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp)
+                    .height(40.dp)
                     .clickable { onBlockShortVideosChange(!blockShortVideos) },
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -445,7 +445,7 @@ private fun SetupScreen(
             }
 
             Row(
-                Modifier.fillMaxWidth().height(34.dp),
+                Modifier.fillMaxWidth().height(28.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -518,13 +518,13 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(170.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(36.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(PauseMuted.copy(alpha = 0.10f))
         )
@@ -557,7 +557,7 @@ private fun DurationPicker(
         }
     }
 
-    Spacer(Modifier.height(5.dp))
+    Spacer(Modifier.height(3.dp))
     Text(
         "От 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
@@ -627,7 +627,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp),
+                    .height(34.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
