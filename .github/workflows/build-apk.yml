@@ -49,13 +49,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.2.apk
-          test -s Pauza-0.6.2.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.3.apk
+          test -s Pauza-0.6.3.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.2.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.6.1.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.2"               --notes "Release build: robust accessibility detection and clearer first-run instructions."
+            gh release upload pauza-latest Pauza-0.6.3.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.2.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.6.3"               --notes "Release build: safe long-press start and startup grace against launcher handoff."
           else
-            gh release create pauza-latest Pauza-0.6.2.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.2"               --notes "Release build: robust accessibility detection and clearer first-run instructions."
+            gh release create pauza-latest Pauza-0.6.3.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.3"               --notes "Release build: safe long-press start and startup grace against launcher handoff."
           fi
