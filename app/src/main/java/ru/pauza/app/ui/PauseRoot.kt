@@ -793,7 +793,6 @@ private fun ActiveScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
                 .padding(horizontal = 18.dp)
         ) {
             Spacer(Modifier.height(34.dp))
@@ -955,18 +954,21 @@ private fun ActiveImmersiveMode() {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 window.insetsController?.let { controller ->
-                    controller.hide(WindowInsets.Type.statusBars())
-                    controller.show(WindowInsets.Type.navigationBars())
                     controller.setSystemBarsAppearance(
                         WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
                         WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                     )
+                    controller.hide(WindowInsets.Type.systemBars())
+                    controller.systemBarsBehavior =
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
             } else {
                 @Suppress("DEPRECATION")
                 run {
                     decor.systemUiVisibility =
                         View.SYSTEM_UI_FLAG_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
                             View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
                 }
             }
