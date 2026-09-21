@@ -40,9 +40,11 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoCooldownUntil = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
-    private var overlay: View? = null
-    private var overlayTimer: TextView? = null
-    private var shortVideoOverlayVisible = false
+    private var blockingOverlay: View? = null
+    private var blockingOverlayTimer: TextView? = null
+    private var shortNoticeOverlay: View? = null
+    private var shortNoticeDismissRunnable: Runnable? = null
+    private var forbiddenOverlayRunnable: Runnable? = null
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -65,7 +67,9 @@ class PauseAccessibilityService : AccessibilityService() {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
             resetShortVideoNavigation()
-            hideOverlay()
+            cancelForbiddenOverlay()
+            hideBlockingOverlay()
+            hideShortNotice()
             return
         }
 
@@ -75,19 +79,25 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!screenInteractive || deviceLocked) {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
-            hideOverlay()
+            cancelForbiddenOverlay()
+            hideBlockingOverlay()
+            hideShortNotice()
             return
         }
 
         if (wasUnavailableForUnlock) {
             wasUnavailableForUnlock = false
             resumeProtectionAt = SystemClock.elapsedRealtime() + UNLOCK_GRACE_MS
-            hideOverlay()
+            cancelForbiddenOverlay()
+            hideBlockingOverlay()
+            hideShortNotice()
             return
         }
 
         if (SystemClock.elapsedRealtime() < resumeProtectionAt) {
-            hideOverlay()
+            cancelForbiddenOverlay()
+            hideBlockingOverlay()
+            hideShortNotice()
             return
         }
 
@@ -155,14 +165,13 @@ class PauseAccessibilityService : AccessibilityService() {
                 resetShortVideoNavigation()
             }
 
-            if (!shortVideoOverlayVisible) {
-                hideOverlay()
-            }
+            cancelForbiddenOverlay()
+            hideBlockingOverlay()
             return
         }
 
-        showOverlay(end)
         returnToPause()
+        scheduleForbiddenOverlay(end)
     }
 
 
@@ -179,9 +188,7 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
 
-        if (shortVideoOverlayVisible) {
-            hideOverlay()
-        }
+        hideShortNotice()
 
         ShortVideoSafeNavigator.navigateToSafeSurface(
             service = this,
@@ -200,7 +207,10 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun showShortVideoOverlay() {
-        if (shortVideoOverlayVisible) return
+        if (shortNoticeOverlay != null) return
+
+        cancelForbiddenOverlay()
+        hideBlockingOverlay()
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -273,7 +283,7 @@ class PauseAccessibilityService : AccessibilityService() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             isClickable = true
             setPadding(dp(8), dp(10), dp(4), dp(10))
-            setOnClickListener { hideOverlay() }
+            setOnClickListener { hideShortNotice() }
         }
         card.addView(
             action,
@@ -297,8 +307,7 @@ class PauseAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
@@ -308,18 +317,14 @@ class PauseAccessibilityService : AccessibilityService() {
 
         runCatching {
             getSystemService(WindowManager::class.java).addView(container, params)
-            overlay = container
-            overlayTimer = null
-            shortVideoOverlayVisible = true
+            shortNoticeOverlay = container
 
-            handler.postDelayed(
-                {
-                    if (shortVideoOverlayVisible) {
-                        hideOverlay()
-                    }
-                },
-                SHORT_VIDEO_NOTICE_DURATION_MS
-            )
+            shortNoticeDismissRunnable?.let(handler::removeCallbacks)
+            shortNoticeDismissRunnable = Runnable {
+                hideShortNotice()
+            }.also { runnable ->
+                handler.postDelayed(runnable, SHORT_VIDEO_NOTICE_DURATION_MS)
+            }
         }
     }
 
@@ -377,10 +382,40 @@ class PauseAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun showOverlay(sessionEnd: Long) {
-        updateOverlayTimer(sessionEnd)
-        if (overlay != null && !shortVideoOverlayVisible) return
-        if (shortVideoOverlayVisible) hideOverlay()
+    private fun scheduleForbiddenOverlay(sessionEnd: Long) {
+        if (blockingOverlay != null || forbiddenOverlayRunnable != null) return
+
+        forbiddenOverlayRunnable = Runnable {
+            forbiddenOverlayRunnable = null
+
+            val foregroundPackage = resolveForegroundPackage(null) ?: return@Runnable
+            val allowed = store.selectedPackages +
+                appsRepository.alwaysAllowedPackages() +
+                packageName
+
+            if (
+                store.sessionEndEpochMs > System.currentTimeMillis() &&
+                foregroundPackage !in allowed
+            ) {
+                showBlockingOverlay(sessionEnd)
+            }
+        }.also { runnable ->
+            handler.postDelayed(runnable, FORBIDDEN_OVERLAY_DELAY_MS)
+        }
+    }
+
+    private fun cancelForbiddenOverlay() {
+        forbiddenOverlayRunnable?.let(handler::removeCallbacks)
+        forbiddenOverlayRunnable = null
+    }
+
+    private fun showBlockingOverlay(sessionEnd: Long) {
+        if (blockingOverlay != null) {
+            updateBlockingOverlayTimer(sessionEnd)
+            return
+        }
+
+        hideShortNotice()
 
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(247, 248, 244))
@@ -398,7 +433,7 @@ class PauseAccessibilityService : AccessibilityService() {
                 android.graphics.Typeface.NORMAL
             )
         }
-        overlayTimer = timer
+        blockingOverlayTimer = timer
         root.addView(
             timer,
             FrameLayout.LayoutParams(
@@ -418,30 +453,43 @@ class PauseAccessibilityService : AccessibilityService() {
 
         runCatching {
             getSystemService(WindowManager::class.java).addView(root, params)
-            overlay = root
-            updateOverlayTimer(sessionEnd)
+            blockingOverlay = root
+            updateBlockingOverlayTimer(sessionEnd)
         }
     }
 
-    private fun updateOverlayTimer(sessionEnd: Long) {
-        overlayTimer?.text = formatRemaining(max(0L, sessionEnd - System.currentTimeMillis()))
+    private fun updateBlockingOverlayTimer(sessionEnd: Long) {
+        blockingOverlayTimer?.text =
+            formatRemaining(max(0L, sessionEnd - System.currentTimeMillis()))
     }
 
-    private fun hideOverlay() {
-        val current = overlay ?: return
+    private fun hideBlockingOverlay() {
+        val current = blockingOverlay ?: return
         runCatching {
             getSystemService(WindowManager::class.java).removeView(current)
         }
-        overlay = null
-        overlayTimer = null
-        shortVideoOverlayVisible = false
+        blockingOverlay = null
+        blockingOverlayTimer = null
+    }
+
+    private fun hideShortNotice() {
+        shortNoticeDismissRunnable?.let(handler::removeCallbacks)
+        shortNoticeDismissRunnable = null
+
+        val current = shortNoticeOverlay ?: return
+        runCatching {
+            getSystemService(WindowManager::class.java).removeView(current)
+        }
+        shortNoticeOverlay = null
     }
 
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
-        hideOverlay()
+        cancelForbiddenOverlay()
+        hideBlockingOverlay()
+        hideShortNotice()
         super.onDestroy()
     }
 
@@ -453,6 +501,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SHORT_VIDEO_RETRY_DELAY_MS = 450L
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_NOTICE_DURATION_MS = 3_500L
+        private const val FORBIDDEN_OVERLAY_DELAY_MS = 220L
     }
 }
 
