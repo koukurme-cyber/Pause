@@ -119,8 +119,11 @@ class PauseAccessibilityService : AccessibilityService() {
                 }
 
                 val shouldScanShortVideo =
-                    event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                        nowElapsed - lastShortContentScanAt >= SHORT_CONTENT_SCAN_THROTTLE_MS
+                    ShortVideoDetector.usesBackgroundScreenDetection(foregroundPackage) &&
+                        (
+                            event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                                nowElapsed - lastShortContentScanAt >= SHORT_CONTENT_SCAN_THROTTLE_MS
+                        )
 
                 val shortVideoDetected =
                     if (shouldScanShortVideo) {
@@ -374,7 +377,8 @@ class PauseAccessibilityService : AccessibilityService() {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
                 )
             }
         )
