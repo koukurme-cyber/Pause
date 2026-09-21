@@ -155,21 +155,14 @@ fun PauseRoot(
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
-                val startNow = System.currentTimeMillis()
-                val end = startNow + duration.totalMinutes * 60_000L
-
+                sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
-                store.protectionStartEpochMs = startNow + 1_200L
-                store.authorizedForegroundPackage = context.packageName
-
-                sessionEnd = end
-                screen = Screen.ACTIVE
-
-                store.sessionEndEpochMs = end
+                store.sessionEndEpochMs = sessionEnd
                 blocker.start(
                     selected + appsRepository.alwaysAllowedPackages(),
-                    end
+                    sessionEnd
                 )
+                screen = Screen.ACTIVE
             }
         )
 
@@ -178,14 +171,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
-            onLaunch = { app ->
-                store.authorizedForegroundPackage = app.packageName
-                val launched = appsRepository.launch(app)
-                if (!launched) {
-                    store.authorizedForegroundPackage = context.packageName
-                }
-                launched
-            },
+            onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
                 store.clearSession()
@@ -1019,13 +1005,14 @@ private fun HoldButton(
     onConfirmed: () -> Unit,
 ) {
     var pressing by remember { mutableStateOf(false) }
-    var readyToStart by remember { mutableStateOf(false) }
 
     LaunchedEffect(pressing) {
-        readyToStart = false
         if (pressing) {
-            delay(2_000)
-            if (pressing) readyToStart = true
+            delay(2000)
+            if (pressing) {
+                pressing = false
+                onConfirmed()
+            }
         }
     }
 
@@ -1038,25 +1025,19 @@ private fun HoldButton(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
-                        val pressedAt = SystemClock.elapsedRealtime()
                         pressing = true
-                        val released = tryAwaitRelease()
-                        val heldFor = SystemClock.elapsedRealtime() - pressedAt
+                        tryAwaitRelease()
                         pressing = false
-
-                        if (released && heldFor >= 2_000L) {
-                            onConfirmed()
-                        }
                     }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
         Text(
-            when {
-                readyToStart -> "Отпустите, чтобы начать"
-                pressing -> "Продолжайте удерживать…"
-                else -> "Удерживайте 2 секунды, чтобы начать"
+            if (pressing) {
+                "Продолжайте удерживать…"
+            } else {
+                "Удерживайте 2 секунды, чтобы начать"
             },
             color = MaterialTheme.colorScheme.onPrimary,
             fontWeight = FontWeight.SemiBold,
