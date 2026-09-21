@@ -54,6 +54,49 @@ object ShortVideoDetector {
         "vertical_player",
     )
 
+    fun isShortEntryAction(
+        packageName: String,
+        event: AccessibilityEvent?,
+    ): Boolean {
+        event ?: return false
+        if (
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_SELECTED
+        ) return false
+
+        val labels = when {
+            packageName == YOUTUBE_PACKAGE -> setOf("shorts")
+            packageName == INSTAGRAM_PACKAGE -> setOf("reels", "рилс")
+            packageName in RUTUBE_PACKAGES -> setOf("shorts")
+            else -> return false
+        }
+
+        val source = event.source
+        val sourceId = source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val sourceText = source?.text?.toString()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceDescription =
+            source?.contentDescription?.toString()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val eventTexts = event.text
+            .mapNotNull { it?.toString()?.trim()?.lowercase(Locale.ROOT) }
+
+        val exactLabelMatch =
+            sourceText in labels ||
+                sourceDescription in labels ||
+                eventTexts.any { it in labels }
+
+        if (!exactLabelMatch) return false
+
+        val looksLikeNavigation =
+            sourceId.contains("tab") ||
+                sourceId.contains("pivot") ||
+                sourceId.contains("nav") ||
+                sourceId.contains("menu") ||
+                sourceId.contains("short") ||
+                sourceId.contains("reel")
+
+        return looksLikeNavigation || source?.isClickable == true
+    }
+
     fun isShortVideoScreen(
         packageName: String,
         root: AccessibilityNodeInfo?,
