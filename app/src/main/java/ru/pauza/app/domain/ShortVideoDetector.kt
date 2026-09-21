@@ -23,11 +23,9 @@ object ShortVideoDetector {
         "reel_player_page_container",
     )
 
-    private val instagramPlayerIds = setOf(
+    private val instagramStrongPlayerIds = setOf(
         "clips_viewer_view_pager",
         "reel_pager",
-        "reel_play_button",
-        "reel_component",
         "clips_swipe_container",
         "reels_viewer",
         "reel_feed_recycler_view",
@@ -35,10 +33,14 @@ object ShortVideoDetector {
         "clips_video_container",
     )
 
-    private val instagramFeedIds = setOf(
-        "feed_pager",
-        "feed_container",
-        "stories_container",
+    private val instagramAuthClassHints = setOf(
+        "login",
+        "signup",
+        "sign_up",
+        "registration",
+        "onboarding",
+        "accountcreation",
+        "account_creation",
     )
 
     private val rutubeStrongIdHints = setOf(
@@ -53,6 +55,11 @@ object ShortVideoDetector {
         "vertical_feed",
         "vertical_player",
     )
+
+    fun isSupportedPackage(packageName: String): Boolean =
+        packageName == YOUTUBE_PACKAGE ||
+            packageName == INSTAGRAM_PACKAGE ||
+            packageName in RUTUBE_PACKAGES
 
     fun isShortEntryAction(
         packageName: String,
@@ -102,7 +109,7 @@ object ShortVideoDetector {
         root: AccessibilityNodeInfo?,
         event: AccessibilityEvent?,
     ): Boolean {
-        if (root == null) return false
+        if (!isSupportedPackage(packageName) || root == null) return false
 
         val snapshot = collectSnapshot(root)
         val className = event?.className?.toString().orEmpty()
@@ -141,19 +148,34 @@ object ShortVideoDetector {
         resourceIds: Set<String>,
         className: String,
     ): Boolean {
-        val hasPlayerId = resourceIds.any { id ->
-            instagramPlayerIds.any { hint -> id.contains(hint) }
-        }
-        if (hasPlayerId) return true
+        val normalizedClass = className.lowercase(Locale.ROOT)
 
-        val hasNormalFeedId = resourceIds.any { id ->
-            instagramFeedIds.any { hint -> id.contains(hint) }
+        if (instagramAuthClassHints.any { normalizedClass.contains(it) }) {
+            return false
         }
-        if (hasNormalFeedId) return false
 
-        return className.contains("ReelViewer", ignoreCase = true) ||
-            className.contains("Clips", ignoreCase = true) ||
-            className.contains("VerticalStream", ignoreCase = true)
+        val hasStrongPlayerId = resourceIds.any { id ->
+            instagramStrongPlayerIds.any { hint -> id.contains(hint) }
+        }
+        if (hasStrongPlayerId) return true
+
+        val classLooksLikeReels =
+            normalizedClass.contains("reelviewer") ||
+                normalizedClass.contains("clipsviewer") ||
+                normalizedClass.contains("verticalstream")
+
+        if (!classLooksLikeReels) return false
+
+        return resourceIds.any { id ->
+            val reelish = id.contains("reel") || id.contains("clip")
+            val playerish =
+                id.contains("viewer") ||
+                    id.contains("pager") ||
+                    id.contains("player") ||
+                    id.contains("swipe") ||
+                    id.contains("video")
+            reelish && playerish
+        }
     }
 
     private fun isRutubeShorts(
@@ -222,6 +244,6 @@ object ShortVideoDetector {
         val resourceIds: Set<String>,
     )
 
-    private const val MAX_NODES = 350
+    private const val MAX_NODES = 200
     private const val MAX_CHILDREN_PER_NODE = 50
 }
