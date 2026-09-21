@@ -330,56 +330,106 @@ private fun SetupScreen(
     onDuration: (PauseDuration) -> Unit,
     onContinue: () -> Unit,
 ) {
+    var searchQuery by remember { mutableStateOf("") }
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
+    val filteredApps = remember(allApps, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            allApps
+        } else {
+            allApps.filter { it.label.contains(query, ignoreCase = true) }
+        }
+    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 18.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Text("Пауза", fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(3.dp))
             Text(
-                "Выберите, что останется доступно до окончания таймера.",
+                "Выберите длительность и приложения, которые останутся доступны.",
                 color = PauseMuted,
-                lineHeight = 21.sp
+                lineHeight = 20.sp
             )
 
             Spacer(Modifier.height(14.dp))
             Card(
-                colors = CardDefaults.cardColors(containerColor = PauseWarning),
-                shape = RoundedCornerShape(20.dp)
+                colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                Column(
-                    Modifier.padding(15.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
+                Column(Modifier.padding(16.dp)) {
                     Text(
-                        "Проверьте, что оставили всё нужное",
+                        "Выберите длительность",
+                        color = PauseMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        formatDuration(duration),
+                        color = PauseGreen,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Text(
-                        "Банк, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                        color = PauseMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
+                    Spacer(Modifier.height(12.dp))
+                    DurationPicker(
+                        duration = duration,
+                        onChange = onDuration
                     )
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            SectionLabel("ДЛИТЕЛЬНОСТЬ")
-            Spacer(Modifier.height(8.dp))
-            DurationPicker(
-                duration = duration,
-                onChange = onDuration
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text(
+                    "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
+                    modifier = Modifier.padding(15.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Найти приложение") },
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        TextButton(onClick = { searchQuery = "" }) {
+                            Text("×", fontSize = 22.sp)
+                        }
+                    }
+                }
             )
 
-            Spacer(Modifier.height(14.dp))
-            SectionLabel("ПРИЛОЖЕНИЯ")
             Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (searchQuery.isBlank()) "Приложения" else "Найдено: " + filteredApps.size,
+                    color = PauseMuted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                if (searchQuery.isNotBlank()) {
+                    TextButton(onClick = { searchQuery = "" }) {
+                        Text("Показать все")
+                    }
+                }
+            }
 
             if (loading) {
                 Box(
@@ -388,14 +438,20 @@ private fun SetupScreen(
                 ) {
                     CircularProgressIndicator()
                 }
+            } else if (filteredApps.isEmpty()) {
+                Box(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Ничего не найдено", color = PauseMuted)
+                }
             } else {
                 LazyColumn(
                     Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 10.dp)
                 ) {
                     items(
-                        items = allApps,
+                        items = filteredApps,
                         key = { it.launchType.name + ":" + it.packageName }
                     ) { app ->
                         val locked = app in alwaysApps
@@ -407,6 +463,7 @@ private fun SetupScreen(
                                 if (!locked) onToggle(app.packageName, enabled)
                             }
                         )
+                        HorizontalDivider()
                     }
                 }
             }
@@ -433,7 +490,7 @@ private fun DurationPicker(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         DurationCounter(
-            label = "дни",
+            label = "Дни",
             value = duration.days,
             min = 0,
             max = 29,
@@ -441,7 +498,7 @@ private fun DurationPicker(
             onChange = { onChange(duration.copy(days = it)) }
         )
         DurationCounter(
-            label = "часы",
+            label = "Часы",
             value = duration.hours,
             min = 0,
             max = 23,
@@ -449,7 +506,7 @@ private fun DurationPicker(
             onChange = { onChange(duration.copy(hours = it)) }
         )
         DurationCounter(
-            label = "мин",
+            label = "Минуты",
             value = duration.minutes,
             min = 0,
             max = 59,
@@ -457,11 +514,11 @@ private fun DurationPicker(
             onChange = { onChange(duration.copy(minutes = it)) }
         )
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(7.dp))
     Text(
-        "От 1 минуты до 29 дней 23 часов 59 минут",
+        "Можно установить от 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
-        fontSize = 12.sp
+        fontSize = 11.sp
     )
 }
 
@@ -476,31 +533,39 @@ private fun DurationCounter(
 ) {
     Card(
         modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(18.dp)
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            TextButton(
-                onClick = { if (value < max) onChange(value + 1) },
-                enabled = value < max,
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Text("+", fontSize = 24.sp, fontWeight = FontWeight.Medium)
-            }
-            Text(
-                value.toString().padStart(2, '0'),
-                fontSize = 25.sp,
-                fontWeight = FontWeight.SemiBold
-            )
             Text(label, color = PauseMuted, fontSize = 12.sp)
-            TextButton(
-                onClick = { if (value > min) onChange(value - 1) },
-                enabled = value > min,
-                contentPadding = PaddingValues(0.dp)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("−", fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                TextButton(
+                    onClick = { if (value > min) onChange(value - 1) },
+                    enabled = value > min,
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("−", fontSize = 22.sp)
+                }
+                Text(
+                    value.toString(),
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                TextButton(
+                    onClick = { if (value < max) onChange(value + 1) },
+                    enabled = value < max,
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("+", fontSize = 22.sp)
+                }
             }
         }
     }
@@ -551,7 +616,7 @@ private fun ReviewScreen(
                         fontSize = 17.sp
                     )
                     Text(
-                        "Проверьте банк, карты, транспорт, такси, домофон/пропуск, парковку, билеты и документы.",
+                        "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
                         color = PauseMuted,
                         lineHeight = 20.sp
                     )
@@ -770,40 +835,38 @@ private fun AppRow(
     locked: Boolean,
     onChecked: (Boolean) -> Unit,
 ) {
-    Card(shape = RoundedCornerShape(18.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AppIconSmall(app)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(app.label, fontWeight = FontWeight.Medium)
-                if (locked) {
-                    Text(
-                        "Всегда доступно",
-                        color = PauseMuted,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = if (locked) null else onChecked,
-                enabled = !locked,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = PauseGreen,
-                    checkedBorderColor = PauseGreen,
-                    uncheckedThumbColor = PauseMuted,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surface,
-                    uncheckedBorderColor = PauseMuted,
-                    disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledCheckedTrackColor = PauseGreen,
-                    disabledCheckedBorderColor = PauseGreen,
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppIconSmall(app)
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Text(app.label, fontWeight = FontWeight.Medium)
+            if (locked) {
+                Text(
+                    "Всегда доступно",
+                    color = PauseMuted,
+                    fontSize = 12.sp
                 )
-            )
+            }
         }
+        Switch(
+            checked = checked,
+            onCheckedChange = if (locked) null else onChecked,
+            enabled = !locked,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = PauseGreen,
+                checkedBorderColor = PauseGreen,
+                uncheckedThumbColor = PauseMuted,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                uncheckedBorderColor = PauseMuted,
+                disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                disabledCheckedTrackColor = PauseGreen,
+                disabledCheckedBorderColor = PauseGreen,
+            )
+        )
     }
 }
 
