@@ -2,6 +2,7 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -30,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
@@ -765,8 +764,14 @@ private fun ActiveScreen(
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val context = LocalContext.current
+                    val clockBitmap = remember {
+                        context.assets.open("ic_pause_clock.png").use { stream ->
+                            BitmapFactory.decodeStream(stream).asImageBitmap()
+                        }
+                    }
                     Image(
-                        painter = painterResource(R.drawable.ic_pause_clock),
+                        bitmap = clockBitmap,
                         contentDescription = null,
                         modifier = Modifier.size(56.dp)
                     )
