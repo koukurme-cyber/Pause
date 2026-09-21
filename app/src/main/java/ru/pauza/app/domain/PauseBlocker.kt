@@ -1,10 +1,10 @@
 package ru.pauza.app.domain
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
 
 interface PauseBlocker {
@@ -18,14 +18,47 @@ class AccessibilityPauseBlocker(private val context: Context) : PauseBlocker {
 
     companion object {
         fun isEnabled(context: Context): Boolean {
+            val target = ComponentName(context, PauseAccessibilityService::class.java)
+
+            // Most reliable source: Android's own colon-separated list of
+            // accessibility services currently enabled by the user.
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty()
+
+            val enabledInSecureSettings = enabledServices
+                .split(':')
+                .asSequence()
+                .mapNotNull { ComponentName.unflattenFromString(it) }
+                .any { it.packageName == target.packageName && sameServiceClass(it.className, target.className, target.packageName) }
+
+            if (enabledInSecureSettings) return true
+
+            // Fallback for OEM implementations that expose the service through
+            // AccessibilityManager even when the secure string is formatted unusually.
             val manager = context.getSystemService(AccessibilityManager::class.java)
-            val component = ComponentName(context, PauseAccessibilityService::class.java)
-            return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-                .any {
-                    val info = it.resolveInfo.serviceInfo
-                    info.packageName == component.packageName &&
-                        info.name == component.className
+            return manager
+                .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                .any { service ->
+                    val info = service.resolveInfo.serviceInfo
+                    info.packageName == target.packageName &&
+                        sameServiceClass(info.name, target.className, target.packageName)
                 }
+        }
+
+        private fun sameServiceClass(
+            actual: String?,
+            expected: String,
+            packageName: String,
+        ): Boolean {
+            if (actual.isNullOrBlank()) return false
+            val normalizedActual = when {
+                actual.startsWith(".") -> packageName + actual
+                '.' !in actual -> "$packageName.$actual"
+                else -> actual
+            }
+            return normalizedActual == expected
         }
 
         fun openSettings(context: Context) {
