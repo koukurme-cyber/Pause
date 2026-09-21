@@ -155,14 +155,20 @@ fun PauseRoot(
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
-                sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
+                val startNow = System.currentTimeMillis()
+                val end = startNow + duration.totalMinutes * 60_000L
+
                 store.selectedPackages = selected
-                store.sessionEndEpochMs = sessionEnd
+                store.protectionStartEpochMs = startNow + 1_200L
+
+                sessionEnd = end
+                screen = Screen.ACTIVE
+
+                store.sessionEndEpochMs = end
                 blocker.start(
                     selected + appsRepository.alwaysAllowedPackages(),
-                    sessionEnd
+                    end
                 )
-                screen = Screen.ACTIVE
             }
         )
 
@@ -1005,14 +1011,13 @@ private fun HoldButton(
     onConfirmed: () -> Unit,
 ) {
     var pressing by remember { mutableStateOf(false) }
+    var readyToStart by remember { mutableStateOf(false) }
 
     LaunchedEffect(pressing) {
+        readyToStart = false
         if (pressing) {
-            delay(2000)
-            if (pressing) {
-                pressing = false
-                onConfirmed()
-            }
+            delay(2_000)
+            if (pressing) readyToStart = true
         }
     }
 
@@ -1025,19 +1030,25 @@ private fun HoldButton(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
+                        val pressedAt = SystemClock.elapsedRealtime()
                         pressing = true
-                        tryAwaitRelease()
+                        val released = tryAwaitRelease()
+                        val heldFor = SystemClock.elapsedRealtime() - pressedAt
                         pressing = false
+
+                        if (released && heldFor >= 2_000L) {
+                            onConfirmed()
+                        }
                     }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
         Text(
-            if (pressing) {
-                "Продолжайте удерживать…"
-            } else {
-                "Удерживайте 2 секунды, чтобы начать"
+            when {
+                readyToStart -> "Отпустите, чтобы начать"
+                pressing -> "Продолжайте удерживать…"
+                else -> "Удерживайте 2 секунды, чтобы начать"
             },
             color = MaterialTheme.colorScheme.onPrimary,
             fontWeight = FontWeight.SemiBold,
