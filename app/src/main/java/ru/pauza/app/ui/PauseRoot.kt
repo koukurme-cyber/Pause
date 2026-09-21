@@ -73,6 +73,9 @@ fun PauseRoot(
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
+    var firstSetupCompleted by remember {
+        mutableStateOf(store.firstSetupCompleted)
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -81,7 +84,7 @@ fun PauseRoot(
         }
     }
 
-    if (!store.firstSetupCompleted || !accessibilityEnabled) {
+    if (!firstSetupCompleted || !accessibilityEnabled) {
         FirstSetupScreen(
             accessEnabled = accessibilityEnabled,
             onOpenAppSettings = {
@@ -98,6 +101,7 @@ fun PauseRoot(
             onContinue = {
                 if (AccessibilityPauseBlocker.isEnabled(context)) {
                     store.firstSetupCompleted = true
+                    firstSetupCompleted = true
                     accessibilityEnabled = true
                 }
             },
@@ -277,20 +281,6 @@ private fun FirstSetupScreen(
             }
 
             item {
-                Text(
-                    "Перед первой Паузой",
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Когда будете выбирать доступные приложения, проверьте банк, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    color = PauseMuted,
-                    lineHeight = 21.sp
-                )
-            }
-
-            item {
                 Button(
                     onClick = onContinue,
                     enabled = accessEnabled,
@@ -356,6 +346,28 @@ private fun SetupScreen(
                 color = PauseMuted,
                 lineHeight = 21.sp
             )
+
+            Spacer(Modifier.height(14.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    Modifier.padding(15.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        "Проверьте, что оставили всё нужное",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Банк, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
+                        color = PauseMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
             SectionLabel("ДЛИТЕЛЬНОСТЬ")
