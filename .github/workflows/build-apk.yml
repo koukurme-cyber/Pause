@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 12/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.4"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 13/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.5"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -55,13 +55,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.4.apk
-          test -s Pauza-0.6.4.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.5.apk
+          test -s Pauza-0.6.5.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.4.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.6.3.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.4"               --notes "Release build: only apps explicitly launched from the Pause launcher may stay in foreground."
+            gh release upload pauza-latest Pauza-0.6.5.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.4.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.6.5"               --notes "Release build: restored proven 0.6.0 session and accessibility behavior; kept clock image and UI-only fixes."
           else
-            gh release create pauza-latest Pauza-0.6.4.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.4"               --notes "Release build: only apps explicitly launched from the Pause launcher may stay in foreground."
+            gh release create pauza-latest Pauza-0.6.5.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.5"               --notes "Release build: restored proven 0.6.0 session and accessibility behavior; kept clock image and UI-only fixes."
           fi
