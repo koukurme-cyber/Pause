@@ -54,8 +54,8 @@ jobs:
 
           if gh release view pauza-latest >/dev/null 2>&1; then
             gh release upload pauza-latest Pauza-0.4.1.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.3-debug.apk -y >/dev/null 2>&1 || true
+            gh release delete-asset pauza-latest Pauza-0.4.apk -y >/dev/null 2>&1 || true
             gh release edit pauza-latest               --title "Пауза 0.4.1"               --notes "Release build: corrected maximum duration 29d 23h 59m."
           else
-            gh release create pauza-latest Pauza-0.4.1.apk               --target "$GITHUB_SHA"               --title "Пауза 0.4.1"               --notes "Release build: first-run setup, locked Phone/Messages toggles, launcher-style Pause screen, 7-tap emergency exit."
+            gh release create pauza-latest Pauza-0.4.1.apk               --target "$GITHUB_SHA"               --title "Пауза 0.4.1"               --notes "Release build: corrected maximum duration 29d 23h 59m."
           fi
