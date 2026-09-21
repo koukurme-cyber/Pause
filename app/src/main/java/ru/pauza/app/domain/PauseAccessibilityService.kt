@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
@@ -30,6 +31,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
     private var lastReturnAt = 0L
+    private var lastShortVideoBlockAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
@@ -87,12 +89,44 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            if (
+                store.blockShortVideos &&
+                ShortVideoDetector.isShortVideoScreen(
+                    packageName = foregroundPackage,
+                    root = rootInActiveWindow,
+                    event = event,
+                )
+            ) {
+                blockShortVideo()
+                return
+            }
+
             hideOverlay()
             return
         }
 
         showOverlay(end)
         returnToPause()
+    }
+
+
+    private fun blockShortVideo() {
+        hideOverlay()
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastShortVideoBlockAt < SHORT_VIDEO_BLOCK_COOLDOWN_MS) return
+        lastShortVideoBlockAt = now
+
+        val handled = performGlobalAction(GLOBAL_ACTION_BACK)
+        if (!handled) {
+            returnToPause()
+        }
+
+        Toast.makeText(
+            this,
+            "Короткие видео заблокированы",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -200,6 +234,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 400L
         private const val UNLOCK_GRACE_MS = 1_000L
+        private const val SHORT_VIDEO_BLOCK_COOLDOWN_MS = 1_200L
     }
 }
 
