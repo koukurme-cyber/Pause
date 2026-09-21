@@ -53,10 +53,9 @@ object ShortVideoSafeNavigator {
         }
 
         return when {
-            packageName == INSTAGRAM_PACKAGE ->
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-
-            packageName == YOUTUBE_PACKAGE || packageName in RUTUBE_PACKAGES ->
+            packageName == INSTAGRAM_PACKAGE ||
+                packageName == YOUTUBE_PACKAGE ||
+                packageName in RUTUBE_PACKAGES ->
                 service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
 
             else -> false
