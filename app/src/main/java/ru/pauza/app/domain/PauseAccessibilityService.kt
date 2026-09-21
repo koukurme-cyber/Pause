@@ -32,7 +32,12 @@ class PauseAccessibilityService : AccessibilityService() {
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
     private var lastReturnAt = 0L
-    private var shortVideoExitInProgress = false
+    private var shortVideoNavigating = false
+    private var shortVideoBlockedPackage: String? = null
+    private var shortVideoRetryAt = 0L
+    private var shortVideoRetryAvailable = false
+    private var pendingShortVideoNotice = false
+    private var shortVideoCooldownUntil = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
@@ -59,7 +64,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
-            shortVideoExitInProgress = false
+            resetShortVideoNavigation()
             hideOverlay()
             return
         }
@@ -92,21 +97,62 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
-            val shortVideoDetected =
-                store.blockShortVideos &&
-                    ShortVideoDetector.isShortVideoScreen(
-                        packageName = foregroundPackage,
-                        root = resolveApplicationRoot(foregroundPackage),
-                        event = event,
+            if (store.blockShortVideos) {
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val appRoot = resolveApplicationRoot(foregroundPackage)
+                val earlyEntryAction = ShortVideoDetector.isShortEntryAction(
+                    packageName = foregroundPackage,
+                    event = event,
+                )
+                val shortVideoDetected = ShortVideoDetector.isShortVideoScreen(
+                    packageName = foregroundPackage,
+                    root = appRoot,
+                    event = event,
+                )
+
+                if (earlyEntryAction) {
+                    beginShortVideoRedirect(
+                        foregroundPackage = foregroundPackage,
+                        appRoot = appRoot,
                     )
+                    return
+                }
 
-            if (shortVideoDetected) {
-                blockShortVideo()
-                return
-            }
+                if (shortVideoDetected) {
+                    if (!shortVideoNavigating || nowElapsed >= shortVideoCooldownUntil) {
+                        beginShortVideoRedirect(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = appRoot,
+                        )
+                    } else if (
+                        shortVideoRetryAvailable &&
+                        nowElapsed >= shortVideoRetryAt &&
+                        foregroundPackage == shortVideoBlockedPackage
+                    ) {
+                        shortVideoRetryAvailable = false
+                        ShortVideoSafeNavigator.navigateToSafeSurface(
+                            service = this,
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                        )
+                    }
+                    return
+                }
 
-            if (shortVideoExitInProgress) {
-                shortVideoExitInProgress = false
+                if (
+                    shortVideoNavigating &&
+                    foregroundPackage == shortVideoBlockedPackage
+                ) {
+                    shortVideoNavigating = false
+                    shortVideoRetryAvailable = false
+                    shortVideoBlockedPackage = null
+                    if (pendingShortVideoNotice) {
+                        pendingShortVideoNotice = false
+                        showShortVideoOverlay()
+                    }
+                }
+            } else {
+                resetShortVideoNavigation()
             }
 
             if (!shortVideoOverlayVisible) {
@@ -120,25 +166,37 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
 
-    private fun blockShortVideo() {
-        if (shortVideoExitInProgress) return
-        shortVideoExitInProgress = true
+    private fun beginShortVideoRedirect(
+        foregroundPackage: String,
+        appRoot: android.view.accessibility.AccessibilityNodeInfo?,
+    ) {
+        val now = SystemClock.elapsedRealtime()
+
+        shortVideoNavigating = true
+        shortVideoBlockedPackage = foregroundPackage
+        shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
+        shortVideoRetryAvailable = true
+        shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
+        pendingShortVideoNotice = true
 
         if (shortVideoOverlayVisible) {
             hideOverlay()
         }
 
-        val handled = performGlobalAction(GLOBAL_ACTION_BACK)
-        if (!handled) {
-            shortVideoExitInProgress = false
-            returnToPause()
-            return
-        }
-
-        handler.postDelayed(
-            { showShortVideoOverlay() },
-            SHORT_VIDEO_NOTICE_DELAY_MS
+        ShortVideoSafeNavigator.navigateToSafeSurface(
+            service = this,
+            packageName = foregroundPackage,
+            root = appRoot,
         )
+    }
+
+    private fun resetShortVideoNavigation() {
+        shortVideoNavigating = false
+        shortVideoBlockedPackage = null
+        shortVideoRetryAt = 0L
+        shortVideoRetryAvailable = false
+        pendingShortVideoNotice = false
+        shortVideoCooldownUntil = 0L
     }
 
     private fun showShortVideoOverlay() {
@@ -390,9 +448,10 @@ class PauseAccessibilityService : AccessibilityService() {
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 250L
-        private const val WATCHDOG_INTERVAL_MS = 400L
+        private const val WATCHDOG_INTERVAL_MS = 300L
         private const val UNLOCK_GRACE_MS = 1_000L
-        private const val SHORT_VIDEO_NOTICE_DELAY_MS = 120L
+        private const val SHORT_VIDEO_RETRY_DELAY_MS = 450L
+        private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_NOTICE_DURATION_MS = 3_500L
     }
 }
