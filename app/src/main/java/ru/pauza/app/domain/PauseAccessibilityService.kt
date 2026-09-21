@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -21,6 +22,7 @@ import android.widget.TextView
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
+import java.util.Locale
 
 class PauseAccessibilityService : AccessibilityService() {
     private val store by lazy { PauseStore(this) }
@@ -28,6 +30,12 @@ class PauseAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
+    private val launcherPackageName by lazy {
+        packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName
+    }
 
     private var lastReturnAt = 0L
     private var shortVideoNavigating = false
@@ -36,6 +44,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoRetryAvailable = false
     private var pendingShortVideoNotice = false
     private var shortVideoCooldownUntil = 0L
+    private var shortVideoUsesDetectedPlayerEscape = false
+    private var shortVideoExitCandidateAt = 0L
     private var lastShortContentScanAt = 0L
     private var lastShortNoticeShownAt = 0L
     private var wasUnavailableForUnlock = false
@@ -93,6 +103,13 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (isSystemEscapeEvent(event)) {
+            hideShortNotice()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            returnToPause(force = true)
+            return
+        }
+
         val foregroundPackage = resolveForegroundPackage(event) ?: return
         val allowed = store.selectedPackages +
             appsRepository.alwaysAllowedPackages() +
@@ -113,6 +130,7 @@ class PauseAccessibilityService : AccessibilityService() {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
                             appRoot = appRoot,
+                            detectedPlayer = false,
                         )
                     }
                     return
@@ -140,10 +158,13 @@ class PauseAccessibilityService : AccessibilityService() {
                     }
 
                 if (shortVideoDetected) {
+                    shortVideoExitCandidateAt = 0L
+
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
                             appRoot = resolveApplicationRoot(foregroundPackage),
+                            detectedPlayer = true,
                         )
                     } else if (
                         shortVideoNavigating &&
@@ -152,10 +173,9 @@ class PauseAccessibilityService : AccessibilityService() {
                         foregroundPackage == shortVideoBlockedPackage
                     ) {
                         shortVideoRetryAvailable = false
-                        ShortVideoSafeNavigator.navigateToSafeSurface(
-                            service = this,
-                            packageName = foregroundPackage,
-                            root = resolveApplicationRoot(foregroundPackage),
+                        navigateShortVideoEscape(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = resolveApplicationRoot(foregroundPackage),
                         )
                     }
                     return
@@ -165,9 +185,22 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoNavigating &&
                     foregroundPackage == shortVideoBlockedPackage
                 ) {
+                    if (shortVideoExitCandidateAt == 0L) {
+                        shortVideoExitCandidateAt = nowElapsed
+                        return
+                    }
+
+                    if (nowElapsed - shortVideoExitCandidateAt < SHORT_VIDEO_EXIT_CONFIRM_MS) {
+                        return
+                    }
+
                     shortVideoNavigating = false
                     shortVideoRetryAvailable = false
                     shortVideoBlockedPackage = null
+                    shortVideoUsesDetectedPlayerEscape = false
+                    shortVideoExitCandidateAt = 0L
+                    shortVideoCooldownUntil =
+                        maxOf(shortVideoCooldownUntil, nowElapsed + SHORT_VIDEO_POST_EXIT_COOLDOWN_MS)
 
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
@@ -190,13 +223,14 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun beginShortVideoRedirect(
         foregroundPackage: String,
         appRoot: android.view.accessibility.AccessibilityNodeInfo?,
+        detectedPlayer: Boolean,
     ) {
         val now = SystemClock.elapsedRealtime()
 
-        val navigated = ShortVideoSafeNavigator.navigateToSafeSurface(
-            service = this,
-            packageName = foregroundPackage,
-            root = appRoot,
+        shortVideoUsesDetectedPlayerEscape = detectedPlayer
+        val navigated = navigateShortVideoEscape(
+            foregroundPackage = foregroundPackage,
+            appRoot = appRoot,
         )
 
         if (!navigated) {
@@ -208,9 +242,28 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoBlockedPackage = foregroundPackage
         shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
         shortVideoRetryAvailable = true
+        shortVideoExitCandidateAt = 0L
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
     }
+
+    private fun navigateShortVideoEscape(
+        foregroundPackage: String,
+        appRoot: android.view.accessibility.AccessibilityNodeInfo?,
+    ): Boolean =
+        if (shortVideoUsesDetectedPlayerEscape) {
+            ShortVideoSafeNavigator.escapeDetectedPlayer(
+                service = this,
+                packageName = foregroundPackage,
+                root = appRoot,
+            )
+        } else {
+            ShortVideoSafeNavigator.navigateToSafeSurface(
+                service = this,
+                packageName = foregroundPackage,
+                root = appRoot,
+            )
+        }
 
     private fun resetShortVideoNavigation() {
         shortVideoNavigating = false
@@ -219,6 +272,8 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoRetryAvailable = false
         pendingShortVideoNotice = false
         shortVideoCooldownUntil = 0L
+        shortVideoUsesDetectedPlayerEscape = false
+        shortVideoExitCandidateAt = 0L
         lastShortContentScanAt = 0L
     }
 
@@ -349,11 +404,54 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun dp(value: Float): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        event ?: return false
+
+        val eventPackage = event.packageName?.toString().orEmpty()
+        if (
+            launcherPackageName != null &&
+            eventPackage == launcherPackageName
+        ) {
+            return true
+        }
+
+        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceId =
+            event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val eventText =
+            event.text.joinToString(" ")
+                .lowercase(Locale.ROOT)
+
+        val recentsSignature =
+            listOf("recent", "recents", "overview", "quickstep", "taskview", "task_view")
+                .any { hint ->
+                    className.contains(hint) ||
+                        sourceId.contains(hint) ||
+                        eventText.contains(hint)
+                }
+
+        return eventPackage == SYSTEM_UI_PACKAGE && recentsSignature
+    }
+
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
+        val eventPackage = event?.packageName?.toString()
+        if (
+            !eventPackage.isNullOrBlank() &&
+            eventPackage != SYSTEM_UI_PACKAGE &&
+            (
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+                )
+        ) {
+            return eventPackage
+        }
+
         val focusedApplication = windows
             .asSequence()
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.isFocused }
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    it.isFocused
+            }
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull { it != SYSTEM_UI_PACKAGE }
 
@@ -364,12 +462,12 @@ class PauseAccessibilityService : AccessibilityService() {
             return rootPackage
         }
 
-        return event?.packageName?.toString()
+        return eventPackage
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
@@ -419,8 +517,10 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 300L
         private const val UNLOCK_GRACE_MS = 1_000L
-        private const val SHORT_VIDEO_RETRY_DELAY_MS = 450L
+        private const val SHORT_VIDEO_RETRY_DELAY_MS = 420L
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
+        private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
+        private const val SHORT_VIDEO_POST_EXIT_COOLDOWN_MS = 1_500L
         private const val SHORT_VIDEO_NOTICE_DURATION_MS = 1_600L
         private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 3_000L
         private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 300L
