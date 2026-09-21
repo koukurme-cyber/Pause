@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 18/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.10"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 19/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.11"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -55,13 +55,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.10.apk
-          test -s Pauza-0.6.10.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.11.apk
+          test -s Pauza-0.6.11.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.10.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.6.9.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.10"               --notes "Release build: wheel picker typography reduced by 2sp."
+            gh release upload pauza-latest Pauza-0.6.11.apk --clobber
+                        gh release edit pauza-latest               --title "Пауза 0.6.11"               --notes "Release build: optional blocking of short-video feeds in YouTube, Instagram and RUTUBE. Stable 0.6.10 is preserved."
           else
-            gh release create pauza-latest Pauza-0.6.10.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.10"               --notes "Release build: wheel picker typography reduced by 2sp."
+            gh release create pauza-latest Pauza-0.6.11.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.11"               --notes "Release build: wheel picker typography reduced by 2sp."
           fi
