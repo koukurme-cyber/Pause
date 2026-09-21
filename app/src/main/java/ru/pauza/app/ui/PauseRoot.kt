@@ -116,6 +116,7 @@ fun PauseRoot(
     var alwaysApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
+    var blockShortVideos by remember { mutableStateOf(store.blockShortVideos) }
     var duration by remember { mutableStateOf(PauseDuration()) }
 
     val now = System.currentTimeMillis()
@@ -141,10 +142,15 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             loading = loading,
             selected = selected,
+            blockShortVideos = blockShortVideos,
             duration = duration,
             onToggle = { pkg, enabled ->
                 selected = if (enabled) selected + pkg else selected - pkg
                 store.selectedPackages = selected
+            },
+            onBlockShortVideosChange = { enabled ->
+                blockShortVideos = enabled
+                store.blockShortVideos = enabled
             },
             onDuration = { duration = it },
             onContinue = { screen = Screen.REVIEW },
@@ -154,6 +160,7 @@ fun PauseRoot(
             apps = apps,
             alwaysApps = alwaysApps,
             selected = selected,
+            blockShortVideos = blockShortVideos,
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
@@ -328,8 +335,10 @@ private fun SetupScreen(
     alwaysApps: List<InstalledApp>,
     loading: Boolean,
     selected: Set<String>,
+    blockShortVideos: Boolean,
     duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
+    onBlockShortVideosChange: (Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
     onContinue: () -> Unit,
 ) {
@@ -411,6 +420,29 @@ private fun SetupScreen(
                     }
                 }
             )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clickable { onBlockShortVideosChange(!blockShortVideos) },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = blockShortVideos,
+                    onCheckedChange = onBlockShortVideosChange,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = PauseGreen,
+                        uncheckedColor = PauseMuted
+                    )
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Блокировать короткие видео",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
 
             Row(
                 Modifier.fillMaxWidth().height(34.dp),
@@ -647,6 +679,7 @@ private fun ReviewScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
+    blockShortVideos: Boolean,
     duration: PauseDuration,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -700,6 +733,15 @@ private fun ReviewScreen(
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            if (blockShortVideos) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Короткие видео: заблокированы",
+                    color = PauseGreen,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Spacer(Modifier.height(10.dp))
 
             val names = (alwaysApps.map { it.label } + selectedApps.map { it.label })
