@@ -6,6 +6,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -15,8 +16,8 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
@@ -36,6 +37,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var shortVideoOverlayVisible = false
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -93,7 +95,7 @@ class PauseAccessibilityService : AccessibilityService() {
                 store.blockShortVideos &&
                 ShortVideoDetector.isShortVideoScreen(
                     packageName = foregroundPackage,
-                    root = rootInActiveWindow,
+                    root = resolveApplicationRoot(foregroundPackage),
                     event = event,
                 )
             ) {
@@ -111,23 +113,161 @@ class PauseAccessibilityService : AccessibilityService() {
 
 
     private fun blockShortVideo() {
-        hideOverlay()
+        if (shortVideoOverlayVisible) return
 
         val now = SystemClock.elapsedRealtime()
         if (now - lastShortVideoBlockAt < SHORT_VIDEO_BLOCK_COOLDOWN_MS) return
         lastShortVideoBlockAt = now
 
-        val handled = performGlobalAction(GLOBAL_ACTION_BACK)
-        if (!handled) {
-            returnToPause()
+        showShortVideoOverlay()
+    }
+
+    private fun showShortVideoOverlay() {
+        if (shortVideoOverlayVisible) return
+
+        hideOverlay()
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(72, 0, 0, 0))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { }
         }
 
-        Toast.makeText(
-            this,
-            "Короткие видео заблокированы",
-            Toast.LENGTH_SHORT
-        ).show()
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(12), dp(12))
+            background = roundedBackground(
+                color = Color.WHITE,
+                radiusDp = 22f
+            )
+            elevation = dp(8).toFloat()
+        }
+
+        val icon = TextView(this).apply {
+            text = "Ⅱ"
+            gravity = Gravity.CENTER
+            textSize = 18f
+            setTextColor(Color.rgb(57, 103, 70))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = roundedBackground(
+                color = Color.rgb(232, 241, 226),
+                radiusDp = 999f
+            )
+        }
+        card.addView(
+            icon,
+            LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                marginEnd = dp(12)
+            }
+        )
+
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val title = TextView(this).apply {
+            text = "Короткие видео заблокированы"
+            textSize = 14f
+            setTextColor(Color.rgb(25, 27, 26))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+        }
+        val body = TextView(this).apply {
+            text = "Во время Паузы Shorts и Reels недоступны."
+            textSize = 11.5f
+            setTextColor(Color.rgb(118, 121, 119))
+            maxLines = 2
+        }
+        copy.addView(title)
+        copy.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(3)
+            }
+        )
+
+        card.addView(
+            copy,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        val action = TextView(this).apply {
+            text = "Понятно"
+            gravity = Gravity.CENTER
+            textSize = 12.5f
+            setTextColor(Color.rgb(57, 103, 70))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isClickable = true
+            setPadding(dp(8), dp(10), dp(4), dp(10))
+            setOnClickListener {
+                hideOverlay()
+                if (!performGlobalAction(GLOBAL_ACTION_BACK)) {
+                    returnToPause()
+                }
+            }
+        }
+        card.addView(
+            action,
+            LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(6)
+            }
+        )
+
+        root.addView(
+            card,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            ).apply {
+                leftMargin = dp(18)
+                rightMargin = dp(18)
+                bottomMargin = dp(34)
+            }
+        )
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+
+        runCatching {
+            getSystemService(WindowManager::class.java).addView(root, params)
+            overlay = root
+            overlayTimer = null
+            shortVideoOverlayVisible = true
+        }
     }
+
+    private fun resolveApplicationRoot(targetPackage: String) =
+        windows
+            .asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { it.root }
+            .firstOrNull { it.packageName?.toString() == targetPackage }
+
+    private fun roundedBackground(color: Int, radiusDp: Float) =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(color)
+            cornerRadius = dp(radiusDp).toFloat()
+        }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    private fun dp(value: Float): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
         val focusedApplication = windows
@@ -165,7 +305,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun showOverlay(sessionEnd: Long) {
         updateOverlayTimer(sessionEnd)
-        if (overlay != null) return
+        if (overlay != null && !shortVideoOverlayVisible) return
+        if (shortVideoOverlayVisible) hideOverlay()
 
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(247, 248, 244))
@@ -219,6 +360,7 @@ class PauseAccessibilityService : AccessibilityService() {
         }
         overlay = null
         overlayTimer = null
+        shortVideoOverlayVisible = false
     }
 
     override fun onInterrupt() = Unit
