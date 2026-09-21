@@ -47,8 +47,17 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
+        val nowEpoch = System.currentTimeMillis()
         val end = store.sessionEndEpochMs
-        if (end <= 0L || System.currentTimeMillis() >= end) {
+        if (end <= 0L || nowEpoch >= end) {
+            hideOverlay()
+            return
+        }
+
+        // During the transition from the confirmation screen to the active
+        // Pause launcher, some OEMs briefly report the underlying home launcher
+        // as the focused window. Ignore that stale window during startup.
+        if (nowEpoch < store.protectionStartEpochMs) {
             hideOverlay()
             return
         }
