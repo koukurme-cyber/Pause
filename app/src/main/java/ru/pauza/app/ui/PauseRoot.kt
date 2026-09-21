@@ -606,9 +606,9 @@ private fun DurationWheel(
                         else -> 0.16f
                     }
                     val fontSize = when (distance) {
-                        0 -> 23.sp
-                        1 -> 17.sp
-                        else -> 13.sp
+                        0 -> 21.sp
+                        1 -> 15.sp
+                        else -> 11.sp
                     }
                     val fontWeight = when (distance) {
                         0 -> FontWeight.SemiBold
