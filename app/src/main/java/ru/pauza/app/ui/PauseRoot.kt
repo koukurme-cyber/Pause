@@ -51,14 +51,17 @@ import java.util.Locale
 import kotlin.math.max
 
 private enum class Screen { SETUP, REVIEW, ACTIVE }
-private data class DurationChoice(val minutes: Int, val label: String)
+private data class PauseDuration(
+    val days: Int = 0,
+    val hours: Int = 1,
+    val minutes: Int = 0,
+) {
+    val totalMinutes: Long
+        get() = days * 24L * 60L + hours * 60L + minutes
 
-private val durations = listOf(
-    DurationChoice(30, "30 мин"),
-    DurationChoice(60, "1 час"),
-    DurationChoice(120, "2 часа"),
-    DurationChoice(240, "4 часа"),
-)
+    val isValid: Boolean
+        get() = totalMinutes >= 1L
+}
 
 @Composable
 fun PauseRoot(
@@ -106,7 +109,7 @@ fun PauseRoot(
     var alwaysApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
-    var duration by remember { mutableStateOf(durations[1]) }
+    var duration by remember { mutableStateOf(PauseDuration()) }
 
     val now = System.currentTimeMillis()
     var sessionEnd by remember {
@@ -147,7 +150,7 @@ fun PauseRoot(
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
-                sessionEnd = System.currentTimeMillis() + duration.minutes * 60_000L
+                sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
                 blocker.start(
@@ -332,9 +335,9 @@ private fun SetupScreen(
     alwaysApps: List<InstalledApp>,
     loading: Boolean,
     selected: Set<String>,
-    duration: DurationChoice,
+    duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
-    onDuration: (DurationChoice) -> Unit,
+    onDuration: (PauseDuration) -> Unit,
     onContinue: () -> Unit,
 ) {
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
@@ -356,16 +359,11 @@ private fun SetupScreen(
 
             Spacer(Modifier.height(16.dp))
             SectionLabel("ДЛИТЕЛЬНОСТЬ")
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                durations.forEach {
-                    FilterChip(
-                        selected = duration == it,
-                        onClick = { onDuration(it) },
-                        label = { Text(it.label) }
-                    )
-                }
-            }
+            Spacer(Modifier.height(8.dp))
+            DurationPicker(
+                duration = duration,
+                onChange = onDuration
+            )
 
             Spacer(Modifier.height(14.dp))
             SectionLabel("ПРИЛОЖЕНИЯ")
@@ -403,6 +401,7 @@ private fun SetupScreen(
 
             Button(
                 onClick = onContinue,
+                enabled = duration.isValid,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
@@ -413,11 +412,94 @@ private fun SetupScreen(
 }
 
 @Composable
+private fun DurationPicker(
+    duration: PauseDuration,
+    onChange: (PauseDuration) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        DurationCounter(
+            label = "дни",
+            value = duration.days,
+            min = 0,
+            max = 29,
+            modifier = Modifier.weight(1f),
+            onChange = { onChange(duration.copy(days = it)) }
+        )
+        DurationCounter(
+            label = "часы",
+            value = duration.hours,
+            min = 0,
+            max = 59,
+            modifier = Modifier.weight(1f),
+            onChange = { onChange(duration.copy(hours = it)) }
+        )
+        DurationCounter(
+            label = "мин",
+            value = duration.minutes,
+            min = 0,
+            max = 59,
+            modifier = Modifier.weight(1f),
+            onChange = { onChange(duration.copy(minutes = it)) }
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "От 1 минуты до 29 дней 59 часов 59 минут",
+        color = PauseMuted,
+        fontSize = 12.sp
+    )
+}
+
+@Composable
+private fun DurationCounter(
+    label: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    modifier: Modifier = Modifier,
+    onChange: (Int) -> Unit,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            TextButton(
+                onClick = { if (value < max) onChange(value + 1) },
+                enabled = value < max,
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("+", fontSize = 24.sp, fontWeight = FontWeight.Medium)
+            }
+            Text(
+                value.toString().padStart(2, '0'),
+                fontSize = 25.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(label, color = PauseMuted, fontSize = 12.sp)
+            TextButton(
+                onClick = { if (value > min) onChange(value - 1) },
+                enabled = value > min,
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("−", fontSize = 24.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ReviewScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
-    duration: DurationChoice,
+    duration: PauseDuration,
     onBack: () -> Unit,
     onStart: () -> Unit,
 ) {
@@ -466,7 +548,7 @@ private fun ReviewScreen(
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "Пауза: " + duration.label,
+                "Пауза: " + formatDuration(duration),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -795,6 +877,14 @@ private fun HoldButton(
             modifier = Modifier.padding(horizontal = 16.dp)
         )
     }
+}
+
+private fun formatDuration(duration: PauseDuration): String {
+    val parts = mutableListOf<String>()
+    if (duration.days > 0) parts += duration.days.toString() + " дн."
+    if (duration.hours > 0) parts += duration.hours.toString() + " ч."
+    if (duration.minutes > 0) parts += duration.minutes.toString() + " мин."
+    return if (parts.isEmpty()) "0 мин." else parts.joinToString(" ")
 }
 
 private fun formatRemaining(ms: Long): String {
