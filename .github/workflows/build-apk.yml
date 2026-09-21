@@ -40,8 +40,8 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - name: Build release APK
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
 
       - name: Publish APK to GitHub Release
         shell: bash
@@ -49,13 +49,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/debug/app-debug.apk Pauza-0.3-debug.apk
-          test -s Pauza-0.3-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.4.apk
+          test -s Pauza-0.4.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.3-debug.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.2-debug.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.3 debug"               --notes "Visible switches + launcher escape protection + stable dev signing."
+            gh release upload pauza-latest Pauza-0.4.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.3-debug.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.4"               --notes "Release build: first-run setup, locked Phone/Messages toggles, launcher-style Pause screen, 7-tap emergency exit."
           else
-            gh release create pauza-latest Pauza-0.3-debug.apk               --target "$GITHUB_SHA"               --title "Пауза 0.3 debug"               --notes "Visible switches + launcher escape protection + stable dev signing."
+            gh release create pauza-latest Pauza-0.4.apk               --target "$GITHUB_SHA"               --title "Пауза 0.4"               --notes "Release build: first-run setup, locked Phone/Messages toggles, launcher-style Pause screen, 7-tap emergency exit."
           fi
