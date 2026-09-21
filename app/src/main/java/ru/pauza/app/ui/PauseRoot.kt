@@ -432,7 +432,7 @@ private fun DurationPicker(
             label = "часы",
             value = duration.hours,
             min = 0,
-            max = 59,
+            max = 23,
             modifier = Modifier.weight(1f),
             onChange = { onChange(duration.copy(hours = it)) }
         )
@@ -447,7 +447,7 @@ private fun DurationPicker(
     }
     Spacer(Modifier.height(6.dp))
     Text(
-        "От 1 минуты до 29 дней 59 часов 59 минут",
+        "От 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
         fontSize = 12.sp
     )
