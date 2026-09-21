@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 21/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.13"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 22/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.14"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -55,14 +55,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.13.apk
-          test -s Pauza-0.6.13.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.14.apk
+          test -s Pauza-0.6.14.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.13.apk --clobber
+            gh release upload pauza-latest Pauza-0.6.14.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.13.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.12.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.11.apk -y >/dev/null 2>&1 || true
-                        gh release edit pauza-latest               --title "Пауза 0.6.13"               --notes "Release build: immediate exit from Shorts/Reels with explanatory notice after return; setup app list moved substantially higher; search field restored."
+                        gh release edit pauza-latest               --title "Пауза 0.6.14"               --notes "Release build: early click interception plus safe in-app Home navigation for Shorts/Reels, with state-machine cooldown and one verification retry."
           else
-            gh release create pauza-latest Pauza-0.6.13.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.13"               --notes "Release build: wheel picker typography reduced by 2sp."
+            gh release create pauza-latest Pauza-0.6.14.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.14"               --notes "Release build: wheel picker typography reduced by 2sp."
           fi
