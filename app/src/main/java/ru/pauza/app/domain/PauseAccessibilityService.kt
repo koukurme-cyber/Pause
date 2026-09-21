@@ -63,11 +63,17 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
-        val allowed = store.selectedPackages +
-            appsRepository.alwaysAllowedPackages() +
-            packageName
+        val whitelistedPackages =
+            store.selectedPackages + appsRepository.alwaysAllowedPackages()
+        val authorizedPackage = store.authorizedForegroundPackage
 
-        if (foregroundPackage in allowed) {
+        val isPauseItself = foregroundPackage == packageName
+        val isExplicitlyLaunchedAllowedApp =
+            authorizedPackage.isNotBlank() &&
+                authorizedPackage in whitelistedPackages &&
+                foregroundPackage == authorizedPackage
+
+        if (isPauseItself || isExplicitlyLaunchedAllowedApp) {
             hideOverlay()
             return
         }
@@ -95,6 +101,8 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun returnToPause() {
+        store.authorizedForegroundPackage = packageName
+
         val now = SystemClock.elapsedRealtime()
         if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
