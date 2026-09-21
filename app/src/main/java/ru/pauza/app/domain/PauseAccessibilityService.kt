@@ -47,33 +47,18 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
-        val nowEpoch = System.currentTimeMillis()
         val end = store.sessionEndEpochMs
-        if (end <= 0L || nowEpoch >= end) {
-            hideOverlay()
-            return
-        }
-
-        // During the transition from the confirmation screen to the active
-        // Pause launcher, some OEMs briefly report the underlying home launcher
-        // as the focused window. Ignore that stale window during startup.
-        if (nowEpoch < store.protectionStartEpochMs) {
+        if (end <= 0L || System.currentTimeMillis() >= end) {
             hideOverlay()
             return
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
-        val whitelistedPackages =
-            store.selectedPackages + appsRepository.alwaysAllowedPackages()
-        val authorizedPackage = store.authorizedForegroundPackage
+        val allowed = store.selectedPackages +
+            appsRepository.alwaysAllowedPackages() +
+            packageName
 
-        val isPauseItself = foregroundPackage == packageName
-        val isExplicitlyLaunchedAllowedApp =
-            authorizedPackage.isNotBlank() &&
-                authorizedPackage in whitelistedPackages &&
-                foregroundPackage == authorizedPackage
-
-        if (isPauseItself || isExplicitlyLaunchedAllowedApp) {
+        if (foregroundPackage in allowed) {
             hideOverlay()
             return
         }
@@ -101,8 +86,6 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun returnToPause() {
-        store.authorizedForegroundPackage = packageName
-
         val now = SystemClock.elapsedRealtime()
         if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
