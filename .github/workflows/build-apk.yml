@@ -49,13 +49,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.5.0.apk
-          test -s Pauza-0.5.0.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.0.apk
+          test -s Pauza-0.6.0.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.5.0.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.4.2.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.5.0"               --notes "Release build: approved setup UI, compact duration control, app search, flat app list."
+            gh release upload pauza-latest Pauza-0.6.0.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.5.0.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.6.0"               --notes "Release build: compact centered duration controls, higher app list, launcher-style active Pause screen."
           else
-            gh release create pauza-latest Pauza-0.5.0.apk               --target "$GITHUB_SHA"               --title "Пауза 0.5.0"               --notes "Release build: approved setup UI, compact duration control, app search, flat app list."
+            gh release create pauza-latest Pauza-0.6.0.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.0"               --notes "Release build: compact centered duration controls, higher app list, launcher-style active Pause screen."
           fi
