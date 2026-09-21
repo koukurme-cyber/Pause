@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 25/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.17"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 26/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.18"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -55,18 +55,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.17.apk
-          test -s Pauza-0.6.17.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.18.apk
+          test -s Pauza-0.6.18.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.17.apk --clobber
+            gh release upload pauza-latest Pauza-0.6.18.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.17.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.16.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.15.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.14.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.13.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.12.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.11.apk -y >/dev/null 2>&1 || true
-                        gh release edit pauza-latest               --title "Пауза 0.6.17"               --notes "Release build: delayed forbidden-app fallback overlay, Instagram no-Back fallback, early short-video tap handling, throttled tree scans, fixed notice duration."
+                        gh release edit pauza-latest               --title "Пауза 0.6.18"               --notes "Release build: removed timer-only fallback overlay, conservative Instagram Reels detection, no disruptive Instagram fallback, 1.6s deterministic short-video notice."
           else
-            gh release create pauza-latest Pauza-0.6.17.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.17"               --notes "Release build: wheel picker typography reduced by 2sp."
+            gh release create pauza-latest Pauza-0.6.18.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.18"               --notes "Release build: wheel picker typography reduced by 2sp."
           fi
