@@ -390,25 +390,11 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(5.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = PauseWarning),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text(
-                    "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-            }
-
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(4.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Найти приложение") },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -518,13 +504,13 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(140.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(36.dp)
+                .height(30.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(PauseMuted.copy(alpha = 0.10f))
         )
@@ -627,7 +613,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(34.dp),
+                    .height(28.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
