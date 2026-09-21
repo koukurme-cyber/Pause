@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 15/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.7"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 16/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.8"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -55,13 +55,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.7.apk
-          test -s Pauza-0.6.7.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.8.apk
+          test -s Pauza-0.6.8.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.7.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.6.6.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.7"               --notes "Release build: pause accessibility watchdog while screen is off or keyguard is active, with a short post-unlock grace period."
+            gh release upload pauza-latest Pauza-0.6.8.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.7.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.6.8"               --notes "Release build: larger duration labels and translucent locked switches for Phone and Messages."
           else
-            gh release create pauza-latest Pauza-0.6.7.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.7"               --notes "Release build: pause accessibility watchdog while screen is off or keyguard is active, with a short post-unlock grace period."
+            gh release create pauza-latest Pauza-0.6.8.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.8"               --notes "Release build: larger duration labels and translucent locked switches for Phone and Messages."
           fi
