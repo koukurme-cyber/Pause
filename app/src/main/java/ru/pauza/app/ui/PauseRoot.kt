@@ -160,6 +160,7 @@ fun PauseRoot(
 
                 store.selectedPackages = selected
                 store.protectionStartEpochMs = startNow + 1_200L
+                store.authorizedForegroundPackage = context.packageName
 
                 sessionEnd = end
                 screen = Screen.ACTIVE
@@ -177,7 +178,14 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
-            onLaunch = appsRepository::launch,
+            onLaunch = { app ->
+                store.authorizedForegroundPackage = app.packageName
+                val launched = appsRepository.launch(app)
+                if (!launched) {
+                    store.authorizedForegroundPackage = context.packageName
+                }
+                launched
+            },
             onFinished = {
                 blocker.stop()
                 store.clearSession()
