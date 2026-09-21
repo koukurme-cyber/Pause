@@ -59,6 +59,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            shortVideoExitInProgress = false
             hideOverlay()
             return
         }
@@ -223,6 +224,17 @@ class PauseAccessibilityService : AccessibilityService() {
             }
         )
 
+        val container = FrameLayout(this).apply {
+            setPadding(dp(18), 0, dp(18), 0)
+            addView(
+                card,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -237,8 +249,8 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         runCatching {
-            getSystemService(WindowManager::class.java).addView(card, params)
-            overlay = card
+            getSystemService(WindowManager::class.java).addView(container, params)
+            overlay = container
             overlayTimer = null
             shortVideoOverlayVisible = true
 
