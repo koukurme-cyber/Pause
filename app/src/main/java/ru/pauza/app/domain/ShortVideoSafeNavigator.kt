@@ -19,6 +19,13 @@ object ShortVideoSafeNavigator {
         "com.google.android.youtube:id/pivot_bar_item_index_0",
     )
 
+    private val instagramSearchIds = listOf(
+        "com.instagram.android:id/search_tab",
+        "com.instagram.android:id/explore_tab",
+        "com.instagram.android:id/tab_search",
+        "com.instagram.android:id/navigation_search",
+    )
+
     private val instagramHomeIds = listOf(
         "com.instagram.android:id/feed_tab",
         "com.instagram.android:id/tab_feed",
@@ -70,8 +77,15 @@ object ShortVideoSafeNavigator {
         root: AccessibilityNodeInfo?,
     ): Boolean {
         return when {
-            packageName == INSTAGRAM_PACKAGE ->
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            packageName == INSTAGRAM_PACKAGE -> {
+                if (root != null) {
+                    if (clickFirstKnownId(root, instagramSearchIds)) return true
+                    if (clickFirstKnownId(root, instagramHomeIds)) return true
+                    if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
+                    if (clickFirstVisibleLabel(root, listOf("Home", "Главная"))) return true
+                }
+                false
+            }
 
             else ->
                 navigateToSafeSurface(
@@ -92,7 +106,7 @@ object ShortVideoSafeNavigator {
             }.getOrDefault(emptyList())
 
             for (node in nodes) {
-                if (clickNodeOrAncestor(node)) return true
+                if (node.isVisibleToUser && clickNodeOrAncestor(node)) return true
             }
         }
         return false
@@ -121,11 +135,32 @@ object ShortVideoSafeNavigator {
         return false
     }
 
+    private fun clickFirstVisibleLabel(
+        root: AccessibilityNodeInfo,
+        labels: List<String>,
+    ): Boolean {
+        for (label in labels) {
+            val nodes = runCatching {
+                root.findAccessibilityNodeInfosByText(label)
+            }.getOrDefault(emptyList())
+
+            for (node in nodes) {
+                val matches =
+                    node.text?.toString()?.equals(label, ignoreCase = true) == true ||
+                        node.contentDescription?.toString()?.equals(label, ignoreCase = true) == true
+                if (matches && node.isVisibleToUser && clickNodeOrAncestor(node)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun clickNodeOrAncestor(start: AccessibilityNodeInfo): Boolean {
         var node: AccessibilityNodeInfo? = start
         var depth = 0
         while (node != null && depth <= 5) {
-            if (node.isClickable && node.isEnabled) {
+            if (node.isVisibleToUser && node.isClickable && node.isEnabled) {
                 if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     return true
                 }
