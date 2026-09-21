@@ -1,6 +1,7 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.ArrayDeque
 
@@ -53,13 +54,36 @@ object ShortVideoSafeNavigator {
         }
 
         return when {
-            packageName == INSTAGRAM_PACKAGE ||
-                packageName == YOUTUBE_PACKAGE ||
+            packageName == INSTAGRAM_PACKAGE ->
+                reopenPackageRoot(service, packageName)
+
+            packageName == YOUTUBE_PACKAGE ||
                 packageName in RUTUBE_PACKAGES ->
                 service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
 
             else -> false
         }
+    }
+
+    private fun reopenPackageRoot(
+        service: AccessibilityService,
+        packageName: String,
+    ): Boolean {
+        val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
+            ?: return false
+
+        return runCatching {
+            service.startActivity(
+                launchIntent.apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
+            )
+            true
+        }.getOrDefault(false)
     }
 
     private fun clickFirstKnownId(
