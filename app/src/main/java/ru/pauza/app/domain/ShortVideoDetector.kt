@@ -61,6 +61,9 @@ object ShortVideoDetector {
             packageName == INSTAGRAM_PACKAGE ||
             packageName in RUTUBE_PACKAGES
 
+    fun usesBackgroundScreenDetection(packageName: String): Boolean =
+        packageName == YOUTUBE_PACKAGE || packageName in RUTUBE_PACKAGES
+
     fun isShortEntryAction(
         packageName: String,
         event: AccessibilityEvent?,
