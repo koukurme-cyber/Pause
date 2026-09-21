@@ -1,5 +1,6 @@
 package ru.pauza.app.domain
 
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.ArrayDeque
@@ -30,6 +31,13 @@ object ShortVideoDetector {
         "reels_viewer",
         "reel_feed_recycler_view",
         "ig_reels_player_container",
+    )
+
+    private val instagramSafeTabIds = setOf(
+        "feed_tab",
+        "search_tab",
+        "profile_tab",
+        "direct_tab",
     )
 
     private val rutubeStrongIdHints = setOf(
@@ -147,6 +155,40 @@ object ShortVideoDetector {
         }
     }
 
+    fun isConfirmedSafeSurface(
+        packageName: String,
+        root: AccessibilityNodeInfo?,
+    ): Boolean {
+        if (packageName != INSTAGRAM_PACKAGE || root == null) return true
+
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+
+        while (queue.isNotEmpty() && visited < MAX_NODES) {
+            val node = queue.removeFirst()
+            visited += 1
+
+            val id = node.viewIdResourceName
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+
+            if (
+                node.isVisibleToUser &&
+                instagramSafeTabIds.any { hint -> id.endsWith(hint) }
+            ) {
+                return true
+            }
+
+            val childCount = node.childCount.coerceAtMost(MAX_CHILDREN_PER_NODE)
+            for (index in 0 until childCount) {
+                node.getChild(index)?.let(queue::addLast)
+            }
+        }
+
+        return false
+    }
+
     private fun isRutubeShorts(
         resourceIds: Set<String>,
         className: String,
@@ -191,14 +233,32 @@ object ShortVideoDetector {
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
 
+        val rootBounds = Rect().also(root::getBoundsInScreen)
+        val rootArea = (rootBounds.width().coerceAtLeast(1) * rootBounds.height().coerceAtLeast(1)).toLong()
+
         var visited = 0
         while (queue.isNotEmpty() && visited < MAX_NODES) {
             val node = queue.removeFirst()
             visited += 1
 
-            node.viewIdResourceName
+            val id = node.viewIdResourceName
                 ?.lowercase(Locale.ROOT)
-                ?.let(resourceIds::add)
+                .orEmpty()
+
+            if (id.isNotBlank()) {
+                val looksLikeInstagramReels =
+                    instagramStrongPlayerIds.any { hint -> id.contains(hint) }
+
+                if (!looksLikeInstagramReels) {
+                    resourceIds.add(id)
+                } else if (node.isVisibleToUser) {
+                    val bounds = Rect().also(node::getBoundsInScreen)
+                    val area = (bounds.width().coerceAtLeast(0) * bounds.height().coerceAtLeast(0)).toLong()
+                    if (area >= (rootArea * INSTAGRAM_FULLSCREEN_AREA_RATIO).toLong()) {
+                        resourceIds.add(id)
+                    }
+                }
+            }
 
             val childCount = node.childCount.coerceAtMost(MAX_CHILDREN_PER_NODE)
             for (index in 0 until childCount) {
@@ -213,6 +273,7 @@ object ShortVideoDetector {
         val resourceIds: Set<String>,
     )
 
-    private const val MAX_NODES = 200
+    private const val MAX_NODES = 220
     private const val MAX_CHILDREN_PER_NODE = 50
+    private const val INSTAGRAM_FULLSCREEN_AREA_RATIO = 0.55
 }
