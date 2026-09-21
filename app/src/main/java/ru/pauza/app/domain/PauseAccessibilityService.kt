@@ -32,7 +32,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
     private var lastReturnAt = 0L
-    private var lastShortVideoBlockAt = 0L
+    private var shortVideoExitInProgress = false
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
@@ -91,19 +91,26 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
-            if (
+            val shortVideoDetected =
                 store.blockShortVideos &&
-                ShortVideoDetector.isShortVideoScreen(
-                    packageName = foregroundPackage,
-                    root = resolveApplicationRoot(foregroundPackage),
-                    event = event,
-                )
-            ) {
+                    ShortVideoDetector.isShortVideoScreen(
+                        packageName = foregroundPackage,
+                        root = resolveApplicationRoot(foregroundPackage),
+                        event = event,
+                    )
+
+            if (shortVideoDetected) {
                 blockShortVideo()
                 return
             }
 
-            hideOverlay()
+            if (shortVideoExitInProgress) {
+                shortVideoExitInProgress = false
+            }
+
+            if (!shortVideoOverlayVisible) {
+                hideOverlay()
+            }
             return
         }
 
@@ -113,26 +120,28 @@ class PauseAccessibilityService : AccessibilityService() {
 
 
     private fun blockShortVideo() {
-        if (shortVideoOverlayVisible) return
+        if (shortVideoExitInProgress) return
+        shortVideoExitInProgress = true
 
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastShortVideoBlockAt < SHORT_VIDEO_BLOCK_COOLDOWN_MS) return
-        lastShortVideoBlockAt = now
+        if (shortVideoOverlayVisible) {
+            hideOverlay()
+        }
 
-        showShortVideoOverlay()
+        val handled = performGlobalAction(GLOBAL_ACTION_BACK)
+        if (!handled) {
+            shortVideoExitInProgress = false
+            returnToPause()
+            return
+        }
+
+        handler.postDelayed(
+            { showShortVideoOverlay() },
+            SHORT_VIDEO_NOTICE_DELAY_MS
+        )
     }
 
     private fun showShortVideoOverlay() {
         if (shortVideoOverlayVisible) return
-
-        hideOverlay()
-
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(72, 0, 0, 0))
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { }
-        }
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -205,12 +214,7 @@ class PauseAccessibilityService : AccessibilityService() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             isClickable = true
             setPadding(dp(8), dp(10), dp(4), dp(10))
-            setOnClickListener {
-                hideOverlay()
-                if (!performGlobalAction(GLOBAL_ACTION_BACK)) {
-                    returnToPause()
-                }
-            }
+            setOnClickListener { hideOverlay() }
         }
         card.addView(
             action,
@@ -219,33 +223,33 @@ class PauseAccessibilityService : AccessibilityService() {
             }
         )
 
-        root.addView(
-            card,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            ).apply {
-                leftMargin = dp(18)
-                rightMargin = dp(18)
-                bottomMargin = dp(34)
-            }
-        )
-
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        )
+        ).apply {
+            gravity = Gravity.BOTTOM
+            x = 0
+            y = dp(24)
+        }
 
         runCatching {
-            getSystemService(WindowManager::class.java).addView(root, params)
-            overlay = root
+            getSystemService(WindowManager::class.java).addView(card, params)
+            overlay = card
             overlayTimer = null
             shortVideoOverlayVisible = true
+
+            handler.postDelayed(
+                {
+                    if (shortVideoOverlayVisible) {
+                        hideOverlay()
+                    }
+                },
+                SHORT_VIDEO_NOTICE_DURATION_MS
+            )
         }
     }
 
@@ -376,7 +380,8 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 400L
         private const val UNLOCK_GRACE_MS = 1_000L
-        private const val SHORT_VIDEO_BLOCK_COOLDOWN_MS = 1_200L
+        private const val SHORT_VIDEO_NOTICE_DELAY_MS = 120L
+        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 3_500L
     }
 }
 
