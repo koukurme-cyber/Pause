@@ -346,35 +346,31 @@ private fun SetupScreen(
             Modifier
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
-            Text("Пауза", fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(3.dp))
+            Text("Пауза", fontSize = 29.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                "Выберите длительность и приложения, которые останутся доступны.",
+                "Выберите длительность и доступные приложения.",
                 color = PauseMuted,
-                lineHeight = 20.sp
+                fontSize = 14.sp,
+                lineHeight = 18.sp
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(9.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Column(Modifier.padding(16.dp)) {
+                Column(
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
                     Text(
-                        "Выберите длительность",
-                        color = PauseMuted,
-                        fontSize = 13.sp
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        formatDuration(duration),
+                        "Длительность паузы",
                         color = PauseGreen,
-                        fontSize = 25.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(6.dp))
                     DurationPicker(
                         duration = duration,
                         onChange = onDuration
@@ -382,51 +378,50 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = PauseWarning),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
                     "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(15.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Найти приложение") },
                 singleLine = true,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(16.dp),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         TextButton(onClick = { searchQuery = "" }) {
-                            Text("×", fontSize = 22.sp)
+                            Text("×", fontSize = 21.sp)
                         }
                     }
                 }
             )
 
-            Spacer(Modifier.height(6.dp))
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().height(34.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     if (searchQuery.isBlank()) "Приложения" else "Найдено: " + filteredApps.size,
                     color = PauseMuted,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
                 )
                 if (searchQuery.isNotBlank()) {
                     TextButton(onClick = { searchQuery = "" }) {
-                        Text("Показать все")
+                        Text("Показать все", fontSize = 12.sp)
                     }
                 }
             }
@@ -448,7 +443,7 @@ private fun SetupScreen(
             } else {
                 LazyColumn(
                     Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 10.dp)
+                    contentPadding = PaddingValues(bottom = 6.dp)
                 ) {
                     items(
                         items = filteredApps,
@@ -471,10 +466,10 @@ private fun SetupScreen(
             Button(
                 onClick = onContinue,
                 enabled = duration.isValid,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(18.dp)
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(17.dp)
             ) {
-                Text("Проверить и начать", fontWeight = FontWeight.SemiBold)
+                Text("Продолжить", fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -487,7 +482,7 @@ private fun DurationPicker(
 ) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         DurationCounter(
             label = "Дни",
@@ -514,11 +509,11 @@ private fun DurationPicker(
             onChange = { onChange(duration.copy(minutes = it)) }
         )
     }
-    Spacer(Modifier.height(7.dp))
+    Spacer(Modifier.height(5.dp))
     Text(
-        "Можно установить от 1 минуты до 29 дней 23 часов 59 минут",
+        "От 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
-        fontSize = 11.sp
+        fontSize = 10.sp
     )
 }
 
@@ -534,37 +529,56 @@ private fun DurationCounter(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(15.dp)
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(label, color = PauseMuted, fontSize = 12.sp)
-            Spacer(Modifier.height(4.dp))
+            Text(label, color = PauseMuted, fontSize = 10.sp)
+            Spacer(Modifier.height(2.dp))
             Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                Modifier.fillMaxWidth().height(34.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
-                    onClick = { if (value > min) onChange(value - 1) },
-                    enabled = value > min,
-                    contentPadding = PaddingValues(0.dp)
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clickable(enabled = value > min) {
+                            if (value > min) onChange(value - 1)
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("−", fontSize = 22.sp)
+                    Text(
+                        "−",
+                        fontSize = 20.sp,
+                        color = if (value > min) PauseMuted else PauseMuted.copy(alpha = 0.35f)
+                    )
                 }
-                Text(
-                    value.toString(),
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                TextButton(
-                    onClick = { if (value < max) onChange(value + 1) },
-                    enabled = value < max,
-                    contentPadding = PaddingValues(0.dp)
+                Box(
+                    Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("+", fontSize = 22.sp)
+                    Text(
+                        value.toString(),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clickable(enabled = value < max) {
+                            if (value < max) onChange(value + 1)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "+",
+                        fontSize = 20.sp,
+                        color = if (value < max) PauseGreen else PauseMuted.copy(alpha = 0.35f)
+                    )
                 }
             }
         }
@@ -692,39 +706,91 @@ private fun ActiveScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp)
         ) {
-            Spacer(Modifier.height(92.dp))
-
+            Spacer(Modifier.height(34.dp))
             Text(
-                text = formatRemaining(remaining),
-                fontSize = 58.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            val tapAt = SystemClock.elapsedRealtime()
-                            if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                            lastTapAt = tapAt
-                            tapCount += 1
-                            if (tapCount >= 7) {
-                                tapCount = 0
-                                onTapExit()
-                            }
-                        }
-                    )
-                }
+                "Пауза",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Доступны только выбранные приложения",
+                color = PauseMuted,
+                fontSize = 14.sp
             )
 
-            Spacer(Modifier.height(62.dp))
+            Spacer(Modifier.height(18.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                val tapAt = SystemClock.elapsedRealtime()
+                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                                lastTapAt = tapAt
+                                tapCount += 1
+                                if (tapCount >= 7) {
+                                    tapCount = 0
+                                    onTapExit()
+                                }
+                            }
+                        )
+                    },
+                colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(PauseGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "◷",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "Осталось",
+                            color = PauseMuted,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = formatRemainingForLauncher(remaining),
+                            color = PauseGreen,
+                            fontSize = if (remaining >= 24L * 60L * 60L * 1000L) 31.sp else 38.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(26.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(26.dp),
-                contentPadding = PaddingValues(bottom = 28.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(
                     items = shortcuts,
@@ -756,13 +822,13 @@ private fun LauncherAppIcon(
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = app.label,
-                modifier = Modifier.size(58.dp)
+                modifier = Modifier.size(62.dp)
             )
         } else {
             Box(
                 Modifier
-                    .size(58.dp)
-                    .clip(CircleShape)
+                    .size(62.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(PauseGreenSoft),
                 contentAlignment = Alignment.Center
             ) {
@@ -960,6 +1026,20 @@ private fun formatDuration(duration: PauseDuration): String {
     if (duration.hours > 0) parts += duration.hours.toString() + " ч."
     if (duration.minutes > 0) parts += duration.minutes.toString() + " мин."
     return if (parts.isEmpty()) "0 мин." else parts.joinToString(" ")
+}
+
+private fun formatRemainingForLauncher(ms: Long): String {
+    val total = ms / 1000
+    val days = total / 86_400
+    val hours = (total % 86_400) / 3600
+    val minutes = (total % 3600) / 60
+    val seconds = total % 60
+
+    return if (days > 0) {
+        String.format(Locale.US, "%d дн %02d:%02d:%02d", days, hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
 }
 
 private fun formatRemaining(ms: Long): String {
