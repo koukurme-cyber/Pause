@@ -49,6 +49,7 @@ import ru.pauza.app.ui.theme.PauseGreenSoft
 import ru.pauza.app.ui.theme.PauseMuted
 import ru.pauza.app.ui.theme.PauseWarning
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
 
 private enum class Screen { SETUP, REVIEW, ACTIVE }
@@ -481,35 +482,48 @@ private fun DurationPicker(
     duration: PauseDuration,
     onChange: (PauseDuration) -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
     ) {
-        DurationCounter(
-            label = "Дни",
-            value = duration.days,
-            min = 0,
-            max = 29,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(days = it)) }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(40.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(PauseMuted.copy(alpha = 0.10f))
         )
-        DurationCounter(
-            label = "Часы",
-            value = duration.hours,
-            min = 0,
-            max = 23,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(hours = it)) }
-        )
-        DurationCounter(
-            label = "Минуты",
-            value = duration.minutes,
-            min = 0,
-            max = 59,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(minutes = it)) }
-        )
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            DurationWheel(
+                value = duration.days,
+                max = 29,
+                modifier = Modifier.weight(1f),
+                formatter = { formatDaysWheel(it) },
+                onValueChange = { onChange(duration.copy(days = it)) }
+            )
+            DurationWheel(
+                value = duration.hours,
+                max = 23,
+                modifier = Modifier.weight(1f),
+                formatter = { "$it ч" },
+                onValueChange = { onChange(duration.copy(hours = it)) }
+            )
+            DurationWheel(
+                value = duration.minutes,
+                max = 59,
+                modifier = Modifier.weight(1f),
+                formatter = { "$it мин" },
+                onValueChange = { onChange(duration.copy(minutes = it)) }
+            )
+        }
     }
+
     Spacer(Modifier.height(5.dp))
     Text(
         "От 1 минуты до 29 дней 23 часов 59 минут",
@@ -519,85 +533,112 @@ private fun DurationPicker(
 }
 
 @Composable
-private fun DurationCounter(
-    label: String,
+private fun DurationWheel(
     value: Int,
-    min: Int,
     max: Int,
     modifier: Modifier = Modifier,
-    onChange: (Int) -> Unit,
+    formatter: (Int) -> String,
+    onValueChange: (Int) -> Unit,
 ) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(15.dp)
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = value.coerceIn(0, max)
+    )
+    val latestValue by rememberUpdatedState(value)
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+
+    val centeredValue by remember(listState, max, value) {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val visible = layout.visibleItemsInfo
+            if (visible.isEmpty()) {
+                value.coerceIn(0, max)
+            } else {
+                val viewportCenter =
+                    (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+                val nearest = visible.minByOrNull { item ->
+                    abs((item.offset + item.size / 2) - viewportCenter)
+                }
+                ((nearest?.index ?: (value + 2)) - 2).coerceIn(0, max)
+            }
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                    val target = centeredValue.coerceIn(0, max)
+                    if (
+                        listState.firstVisibleItemIndex != target ||
+                        listState.firstVisibleItemScrollOffset != 0
+                    ) {
+                        listState.animateScrollToItem(target)
+                    }
+                    if (target != latestValue) {
+                        latestOnValueChange(target)
+                    }
+                }
+            }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxHeight(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        items(
+            count = max + 5,
+            key = { it }
+        ) { listIndex ->
+            val actualValue = listIndex - 2
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(22.dp),
+                    .height(40.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = label,
-                    color = PauseMuted,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-            }
-            Spacer(Modifier.height(2.dp))
-            Row(
-                Modifier.fillMaxWidth().height(34.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(32.dp)
-                        .clickable(enabled = value > min) {
-                            if (value > min) onChange(value - 1)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
+                if (actualValue in 0..max) {
+                    val distance = abs(actualValue - centeredValue)
+                    val alpha = when (distance) {
+                        0 -> 1f
+                        1 -> 0.52f
+                        else -> 0.16f
+                    }
+                    val fontSize = when (distance) {
+                        0 -> 23.sp
+                        1 -> 17.sp
+                        else -> 13.sp
+                    }
+                    val fontWeight = when (distance) {
+                        0 -> FontWeight.SemiBold
+                        1 -> FontWeight.Medium
+                        else -> FontWeight.Normal
+                    }
+
                     Text(
-                        "−",
-                        fontSize = 20.sp,
-                        color = if (value > min) PauseMuted else PauseMuted.copy(alpha = 0.35f)
-                    )
-                }
-                Box(
-                    Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        value.toString(),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
-                }
-                Box(
-                    Modifier
-                        .size(32.dp)
-                        .clickable(enabled = value < max) {
-                            if (value < max) onChange(value + 1)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "+",
-                        fontSize = 20.sp,
-                        color = if (value < max) PauseGreen else PauseMuted.copy(alpha = 0.35f)
+                        text = formatter(actualValue),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                        fontSize = fontSize,
+                        fontWeight = fontWeight,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
                     )
                 }
             }
         }
     }
+}
+
+private fun formatDaysWheel(value: Int): String {
+    val mod100 = value % 100
+    val mod10 = value % 10
+    val word = when {
+        mod100 in 11..14 -> "дней"
+        mod10 == 1 -> "день"
+        mod10 in 2..4 -> "дня"
+        else -> "дней"
+    }
+    return "$value $word"
 }
 
 @Composable
