@@ -1,12 +1,14 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
 import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
@@ -24,8 +26,12 @@ class PauseAccessibilityService : AccessibilityService() {
     private val store by lazy { PauseStore(this) }
     private val appsRepository by lazy { InstalledAppsRepository(this) }
     private val handler = Handler(Looper.getMainLooper())
+    private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
+    private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
     private var lastReturnAt = 0L
+    private var wasUnavailableForUnlock = false
+    private var resumeProtectionAt = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
 
@@ -49,6 +55,28 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            hideOverlay()
+            return
+        }
+
+        val screenInteractive = powerManager.isInteractive
+        val deviceLocked = keyguardManager.isKeyguardLocked || keyguardManager.isDeviceLocked
+
+        if (!screenInteractive || deviceLocked) {
+            wasUnavailableForUnlock = true
+            resumeProtectionAt = 0L
+            hideOverlay()
+            return
+        }
+
+        if (wasUnavailableForUnlock) {
+            wasUnavailableForUnlock = false
+            resumeProtectionAt = SystemClock.elapsedRealtime() + UNLOCK_GRACE_MS
+            hideOverlay()
+            return
+        }
+
+        if (SystemClock.elapsedRealtime() < resumeProtectionAt) {
             hideOverlay()
             return
         }
@@ -171,6 +199,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 400L
+        private const val UNLOCK_GRACE_MS = 1_000L
     }
 }
 
