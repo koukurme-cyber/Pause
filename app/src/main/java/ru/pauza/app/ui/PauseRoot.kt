@@ -539,14 +539,14 @@ private fun DurationCounter(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(18.dp),
+                    .height(22.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label,
                     color = PauseMuted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     maxLines = 1
                 )
@@ -942,9 +942,9 @@ private fun AppRow(
                 uncheckedThumbColor = PauseMuted,
                 uncheckedTrackColor = MaterialTheme.colorScheme.surface,
                 uncheckedBorderColor = PauseMuted,
-                disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                disabledCheckedTrackColor = PauseGreen,
-                disabledCheckedBorderColor = PauseGreen,
+                disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f),
+                disabledCheckedTrackColor = PauseGreen.copy(alpha = 0.38f),
+                disabledCheckedBorderColor = PauseGreen.copy(alpha = 0.38f),
             )
         )
     }
