@@ -209,13 +209,13 @@ private fun FirstSetupScreen(
         ) {
             item {
                 Text(
-                    "Сначала настроим доступ",
+                    "Сначала включите доступ",
                     fontSize = 30.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Это нужно один раз. Без этого Android позволит выйти из Паузы на рабочий стол или открыть закрытое приложение.",
+                    "Пауза использует специальные возможности Android, чтобы во время таймера не открывались запрещённые приложения и рабочий стол.",
                     color = PauseMuted,
                     lineHeight = 22.sp
                 )
@@ -224,23 +224,8 @@ private fun FirstSetupScreen(
             item {
                 SetupStep(
                     number = "1",
-                    title = "Разрешите настройки приложения",
-                    text = "Откройте страницу «Пауза» в настройках телефона. Если в меню ⋮ есть пункт «Разрешить настройки с ограниченным доступом», нажмите его."
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = onOpenAppSettings,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Открыть настройки приложения")
-                }
-            }
-
-            item {
-                SetupStep(
-                    number = "2",
-                    title = "Включите доступ в специальных возможностях",
-                    text = "Откройте «Специальные возможности» → «Скачанные приложения» → «Пауза» и включите доступ."
+                    title = "Включите «Паузу» в специальных возможностях",
+                    text = "Откройте системный раздел специальных возможностей, найдите «Пауза» среди скачанных приложений и включите доступ."
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
@@ -258,24 +243,54 @@ private fun FirstSetupScreen(
                     ),
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Row(
+                    Column(
                         Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        Text(
+                            if (accessEnabled) "Доступ включён" else "Доступ пока не обнаружен",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            if (accessEnabled) {
+                                "Android разрешил «Паузе» использовать специальные возможности."
+                            } else {
+                                "Если вы только что включили доступ, вернитесь в приложение — состояние обновится автоматически."
+                            },
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+
+            if (!accessEnabled) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
                             Text(
-                                if (accessEnabled) "Доступ включён" else "Доступ ещё не включён",
+                                "Android не даёт включить доступ?",
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (accessEnabled) {
-                                    "Можно переходить к приложению."
-                                } else {
-                                    "Вернитесь сюда после включения доступа."
-                                },
+                                "Только в этом случае откройте настройки приложения «Пауза». Если в меню ⋮ есть пункт «Разрешить настройки с ограниченным доступом», нажмите его, затем снова включите «Паузу» в специальных возможностях.",
                                 color = PauseMuted,
-                                fontSize = 13.sp
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
                             )
+                            OutlinedButton(
+                                onClick = onOpenAppSettings,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Открыть настройки приложения")
+                            }
                         }
                     }
                 }
