@@ -38,6 +38,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoRetryAvailable = false
     private var pendingShortVideoNotice = false
     private var shortVideoCooldownUntil = 0L
+    private var lastShortContentScanAt = 0L
+    private var lastShortNoticeShownAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var blockingOverlay: View? = null
@@ -110,36 +112,68 @@ class PauseAccessibilityService : AccessibilityService() {
             if (store.blockShortVideos) {
                 val nowElapsed = SystemClock.elapsedRealtime()
                 val appRoot = resolveApplicationRoot(foregroundPackage)
+
                 val earlyEntryAction = ShortVideoDetector.isShortEntryAction(
                     packageName = foregroundPackage,
                     event = event,
                 )
-                val shortVideoDetected = ShortVideoDetector.isShortVideoScreen(
-                    packageName = foregroundPackage,
-                    root = appRoot,
-                    event = event,
-                )
 
                 if (earlyEntryAction) {
-                    beginShortVideoRedirect(
-                        foregroundPackage = foregroundPackage,
-                        appRoot = appRoot,
-                    )
+                    if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
+                        beginShortVideoRedirect(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = appRoot,
+                        )
+                    } else {
+                        ShortVideoSafeNavigator.navigateToSafeSurface(
+                            service = this,
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                        )
+                    }
                     return
                 }
 
+                val shouldScanShortVideo =
+                    event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                        nowElapsed - lastShortContentScanAt >= SHORT_CONTENT_SCAN_THROTTLE_MS
+
+                val shortVideoDetected =
+                    if (shouldScanShortVideo) {
+                        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                            lastShortContentScanAt = nowElapsed
+                        }
+                        ShortVideoDetector.isShortVideoScreen(
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                            event = event,
+                        )
+                    } else {
+                        false
+                    }
+
                 if (shortVideoDetected) {
-                    if (!shortVideoNavigating || nowElapsed >= shortVideoCooldownUntil) {
+                    if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
                             appRoot = appRoot,
                         )
                     } else if (
+                        shortVideoNavigating &&
                         shortVideoRetryAvailable &&
                         nowElapsed >= shortVideoRetryAt &&
                         foregroundPackage == shortVideoBlockedPackage
                     ) {
                         shortVideoRetryAvailable = false
+                        ShortVideoSafeNavigator.navigateToSafeSurface(
+                            service = this,
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                        )
+                    } else if (
+                        !shortVideoNavigating &&
+                        nowElapsed < shortVideoCooldownUntil
+                    ) {
                         ShortVideoSafeNavigator.navigateToSafeSurface(
                             service = this,
                             packageName = foregroundPackage,
@@ -158,7 +192,9 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoBlockedPackage = null
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
-                        showShortVideoOverlay()
+                        if (nowElapsed - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS) {
+                            showShortVideoOverlay()
+                        }
                     }
                 }
             } else {
@@ -204,10 +240,13 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoRetryAvailable = false
         pendingShortVideoNotice = false
         shortVideoCooldownUntil = 0L
+        lastShortContentScanAt = 0L
     }
 
     private fun showShortVideoOverlay() {
         if (shortNoticeOverlay != null) return
+
+        lastShortNoticeShownAt = SystemClock.elapsedRealtime()
 
         cancelForbiddenOverlay()
         hideBlockingOverlay()
@@ -485,8 +524,10 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val SHORT_VIDEO_RETRY_DELAY_MS = 450L
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
-        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 2_800L
-        private const val FORBIDDEN_OVERLAY_DELAY_MS = 220L
+        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 2_500L
+        private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 4_000L
+        private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 120L
+        private const val FORBIDDEN_OVERLAY_DELAY_MS = 1_200L
     }
 }
 
