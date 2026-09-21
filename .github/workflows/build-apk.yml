@@ -40,6 +40,12 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      - name: Set release version
+        shell: bash
+        run: |
+          sed -i 's/versionCode = 11/versionCode = 12/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.4"/' app/build.gradle.kts
+
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
 
@@ -49,13 +55,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.3.apk
-          test -s Pauza-0.6.3.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.4.apk
+          test -s Pauza-0.6.4.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.3.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.6.2.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.3"               --notes "Release build: safe long-press start and startup grace against launcher handoff."
+            gh release upload pauza-latest Pauza-0.6.4.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.6.3.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.6.4"               --notes "Release build: only apps explicitly launched from the Pause launcher may stay in foreground."
           else
-            gh release create pauza-latest Pauza-0.6.3.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.3"               --notes "Release build: safe long-press start and startup grace against launcher handoff."
+            gh release create pauza-latest Pauza-0.6.4.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.4"               --notes "Release build: only apps explicitly launched from the Pause launcher may stay in foreground."
           fi
