@@ -13,17 +13,25 @@ class PauseStore(context: Context) {
         get() = prefs.getLong(KEY_SESSION_END, 0L)
         set(value) { prefs.edit().putLong(KEY_SESSION_END, value).apply() }
 
+    var protectionStartEpochMs: Long
+        get() = prefs.getLong(KEY_PROTECTION_START, 0L)
+        set(value) { prefs.edit().putLong(KEY_PROTECTION_START, value).apply() }
+
     var firstSetupCompleted: Boolean
         get() = prefs.getBoolean(KEY_FIRST_SETUP_COMPLETED, false)
         set(value) { prefs.edit().putBoolean(KEY_FIRST_SETUP_COMPLETED, value).apply() }
 
     fun clearSession() {
-        prefs.edit().remove(KEY_SESSION_END).apply()
+        prefs.edit()
+            .remove(KEY_SESSION_END)
+            .remove(KEY_PROTECTION_START)
+            .apply()
     }
 
     companion object {
         private const val KEY_SELECTED = "selected_packages"
         private const val KEY_SESSION_END = "session_end_epoch_ms"
+        private const val KEY_PROTECTION_START = "protection_start_epoch_ms"
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
     }
 }
