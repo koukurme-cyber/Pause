@@ -30,17 +30,6 @@ object ShortVideoDetector {
         "reels_viewer",
         "reel_feed_recycler_view",
         "ig_reels_player_container",
-        "clips_video_container",
-    )
-
-    private val instagramAuthClassHints = setOf(
-        "login",
-        "signup",
-        "sign_up",
-        "registration",
-        "onboarding",
-        "accountcreation",
-        "account_creation",
     )
 
     private val rutubeStrongIdHints = setOf(
@@ -62,7 +51,9 @@ object ShortVideoDetector {
             packageName in RUTUBE_PACKAGES
 
     fun usesBackgroundScreenDetection(packageName: String): Boolean =
-        packageName == YOUTUBE_PACKAGE || packageName in RUTUBE_PACKAGES
+        packageName == YOUTUBE_PACKAGE ||
+            packageName == INSTAGRAM_PACKAGE ||
+            packageName in RUTUBE_PACKAGES
 
     fun isShortEntryAction(
         packageName: String,
@@ -151,33 +142,8 @@ object ShortVideoDetector {
         resourceIds: Set<String>,
         className: String,
     ): Boolean {
-        val normalizedClass = className.lowercase(Locale.ROOT)
-
-        if (instagramAuthClassHints.any { normalizedClass.contains(it) }) {
-            return false
-        }
-
-        val hasStrongPlayerId = resourceIds.any { id ->
-            instagramStrongPlayerIds.any { hint -> id.contains(hint) }
-        }
-        if (hasStrongPlayerId) return true
-
-        val classLooksLikeReels =
-            normalizedClass.contains("reelviewer") ||
-                normalizedClass.contains("clipsviewer") ||
-                normalizedClass.contains("verticalstream")
-
-        if (!classLooksLikeReels) return false
-
         return resourceIds.any { id ->
-            val reelish = id.contains("reel") || id.contains("clip")
-            val playerish =
-                id.contains("viewer") ||
-                    id.contains("pager") ||
-                    id.contains("player") ||
-                    id.contains("swipe") ||
-                    id.contains("video")
-            reelish && playerish
+            instagramStrongPlayerIds.any { hint -> id.contains(hint) }
         }
     }
 
