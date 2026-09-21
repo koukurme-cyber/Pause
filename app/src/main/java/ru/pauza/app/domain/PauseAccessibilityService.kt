@@ -41,7 +41,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoNavigating = false
     private var shortVideoBlockedPackage: String? = null
     private var shortVideoRetryAt = 0L
-    private var shortVideoRetryAvailable = false
+    private var shortVideoRetryAttempts = 0
     private var pendingShortVideoNotice = false
     private var shortVideoCooldownUntil = 0L
     private var shortVideoUsesDetectedPlayerEscape = false
@@ -168,11 +168,12 @@ class PauseAccessibilityService : AccessibilityService() {
                         )
                     } else if (
                         shortVideoNavigating &&
-                        shortVideoRetryAvailable &&
                         nowElapsed >= shortVideoRetryAt &&
-                        foregroundPackage == shortVideoBlockedPackage
+                        foregroundPackage == shortVideoBlockedPackage &&
+                        shortVideoRetryAttempts < SHORT_VIDEO_MAX_RETRIES
                     ) {
-                        shortVideoRetryAvailable = false
+                        shortVideoRetryAttempts += 1
+                        shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
                         navigateShortVideoEscape(
                             foregroundPackage = foregroundPackage,
                             appRoot = resolveApplicationRoot(foregroundPackage),
@@ -185,6 +186,30 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoNavigating &&
                     foregroundPackage == shortVideoBlockedPackage
                 ) {
+                    val appRoot = resolveApplicationRoot(foregroundPackage)
+                    val safeSurfaceConfirmed =
+                        ShortVideoDetector.isConfirmedSafeSurface(
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                        )
+
+                    if (!safeSurfaceConfirmed) {
+                        shortVideoExitCandidateAt = 0L
+
+                        if (
+                            nowElapsed >= shortVideoRetryAt &&
+                            shortVideoRetryAttempts < SHORT_VIDEO_MAX_RETRIES
+                        ) {
+                            shortVideoRetryAttempts += 1
+                            shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
+                            navigateShortVideoEscape(
+                                foregroundPackage = foregroundPackage,
+                                appRoot = appRoot,
+                            )
+                        }
+                        return
+                    }
+
                     if (shortVideoExitCandidateAt == 0L) {
                         shortVideoExitCandidateAt = nowElapsed
                         return
@@ -195,7 +220,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     }
 
                     shortVideoNavigating = false
-                    shortVideoRetryAvailable = false
+                    shortVideoRetryAttempts = 0
                     shortVideoBlockedPackage = null
                     shortVideoUsesDetectedPlayerEscape = false
                     shortVideoExitCandidateAt = 0L
@@ -241,7 +266,7 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoNavigating = true
         shortVideoBlockedPackage = foregroundPackage
         shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
-        shortVideoRetryAvailable = true
+        shortVideoRetryAttempts = 0
         shortVideoExitCandidateAt = 0L
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
@@ -256,6 +281,7 @@ class PauseAccessibilityService : AccessibilityService() {
                 service = this,
                 packageName = foregroundPackage,
                 root = appRoot,
+                attempt = shortVideoRetryAttempts,
             )
         } else {
             ShortVideoSafeNavigator.navigateToSafeSurface(
@@ -269,7 +295,7 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoNavigating = false
         shortVideoBlockedPackage = null
         shortVideoRetryAt = 0L
-        shortVideoRetryAvailable = false
+        shortVideoRetryAttempts = 0
         pendingShortVideoNotice = false
         shortVideoCooldownUntil = 0L
         shortVideoUsesDetectedPlayerEscape = false
@@ -518,6 +544,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 300L
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val SHORT_VIDEO_RETRY_DELAY_MS = 420L
+        private const val SHORT_VIDEO_MAX_RETRIES = 4
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
         private const val SHORT_VIDEO_POST_EXIT_COOLDOWN_MS = 1_500L
