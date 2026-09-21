@@ -275,23 +275,6 @@ class PauseAccessibilityService : AccessibilityService() {
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        val action = TextView(this).apply {
-            text = "Понятно"
-            gravity = Gravity.CENTER
-            textSize = 12.5f
-            setTextColor(Color.rgb(57, 103, 70))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            isClickable = true
-            setPadding(dp(8), dp(10), dp(4), dp(10))
-            setOnClickListener { hideShortNotice() }
-        }
-        card.addView(
-            action,
-            LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(6)
-            }
-        )
-
         val container = FrameLayout(this).apply {
             setPadding(dp(18), 0, dp(18), 0)
             addView(
@@ -307,7 +290,9 @@ class PauseAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM
@@ -500,7 +485,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val SHORT_VIDEO_RETRY_DELAY_MS = 450L
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
-        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 3_500L
+        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 2_800L
         private const val FORBIDDEN_OVERLAY_DELAY_MS = 220L
     }
 }
