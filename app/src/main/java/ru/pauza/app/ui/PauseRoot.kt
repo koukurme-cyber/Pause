@@ -1,7 +1,6 @@
 package ru.pauza.app.ui
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -33,12 +32,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import ru.pauza.app.BuildConfig
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
@@ -53,6 +52,7 @@ import kotlin.math.max
 
 private enum class Screen { SETUP, REVIEW, ACTIVE }
 private data class DurationChoice(val minutes: Int, val label: String)
+
 private val durations = listOf(
     DurationChoice(30, "30 мин"),
     DurationChoice(60, "1 час"),
@@ -66,14 +66,55 @@ fun PauseRoot(
     appsRepository: InstalledAppsRepository,
     blocker: PauseBlocker,
 ) {
+    val context = LocalContext.current
+    var accessibilityEnabled by remember {
+        mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
+            delay(700)
+        }
+    }
+
+    if (!store.firstSetupCompleted || !accessibilityEnabled) {
+        FirstSetupScreen(
+            accessEnabled = accessibilityEnabled,
+            onOpenAppSettings = {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + context.packageName)
+                    )
+                )
+            },
+            onOpenAccessibility = {
+                AccessibilityPauseBlocker.openSettings(context)
+            },
+            onContinue = {
+                if (AccessibilityPauseBlocker.isEnabled(context)) {
+                    store.firstSetupCompleted = true
+                    accessibilityEnabled = true
+                }
+            },
+        )
+        return
+    }
+
     var apps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var alwaysApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
     var duration by remember { mutableStateOf(durations[1]) }
+
     val now = System.currentTimeMillis()
-    var sessionEnd by remember { mutableLongStateOf(store.sessionEndEpochMs.takeIf { it > now } ?: 0L) }
-    var screen by remember { mutableStateOf(if (sessionEnd > now) Screen.ACTIVE else Screen.SETUP) }
+    var sessionEnd by remember {
+        mutableLongStateOf(store.sessionEndEpochMs.takeIf { it > now } ?: 0L)
+    }
+    var screen by remember {
+        mutableStateOf(if (sessionEnd > now) Screen.ACTIVE else Screen.SETUP)
+    }
 
     LaunchedEffect(Unit) {
         val loaded = withContext(Dispatchers.IO) {
@@ -87,6 +128,7 @@ fun PauseRoot(
     when (screen) {
         Screen.SETUP -> SetupScreen(
             apps = apps,
+            alwaysApps = alwaysApps,
             loading = loading,
             selected = selected,
             duration = duration,
@@ -100,16 +142,18 @@ fun PauseRoot(
 
         Screen.REVIEW -> ReviewScreen(
             apps = apps,
+            alwaysApps = alwaysApps,
             selected = selected,
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
-                val requested = duration.minutes * 60_000L
-                val effective = if (BuildConfig.DEBUG) minOf(requested, 10 * 60_000L) else requested
-                sessionEnd = System.currentTimeMillis() + effective
+                sessionEnd = System.currentTimeMillis() + duration.minutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
-                blocker.start(selected + appsRepository.alwaysAllowedPackages(), sessionEnd)
+                blocker.start(
+                    selected + appsRepository.alwaysAllowedPackages(),
+                    sessionEnd
+                )
                 screen = Screen.ACTIVE
             }
         )
@@ -126,7 +170,7 @@ fun PauseRoot(
                 sessionEnd = 0L
                 screen = Screen.SETUP
             },
-            onDevStop = {
+            onTapExit = {
                 blocker.stop()
                 store.clearSession()
                 sessionEnd = 0L
@@ -137,8 +181,155 @@ fun PauseRoot(
 }
 
 @Composable
+private fun FirstSetupScreen(
+    accessEnabled: Boolean,
+    onOpenAppSettings: () -> Unit,
+    onOpenAccessibility: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    Surface(
+        Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        LazyColumn(
+            Modifier
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp),
+            contentPadding = PaddingValues(top = 26.dp, bottom = 30.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            item {
+                Text(
+                    "Сначала настроим доступ",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Это нужно один раз. Без этого Android позволит выйти из Паузы на рабочий стол или открыть закрытое приложение.",
+                    color = PauseMuted,
+                    lineHeight = 22.sp
+                )
+            }
+
+            item {
+                SetupStep(
+                    number = "1",
+                    title = "Разрешите настройки приложения",
+                    text = "Откройте страницу «Пауза» в настройках телефона. Если в меню ⋮ есть пункт «Разрешить настройки с ограниченным доступом», нажмите его."
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onOpenAppSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Открыть настройки приложения")
+                }
+            }
+
+            item {
+                SetupStep(
+                    number = "2",
+                    title = "Включите доступ в специальных возможностях",
+                    text = "Откройте «Специальные возможности» → «Скачанные приложения» → «Пауза» и включите доступ."
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = onOpenAccessibility,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Открыть специальные возможности")
+                }
+            }
+
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (accessEnabled) PauseGreenSoft else PauseWarning
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (accessEnabled) "Доступ включён" else "Доступ ещё не включён",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (accessEnabled) {
+                                    "Можно переходить к приложению."
+                                } else {
+                                    "Вернитесь сюда после включения доступа."
+                                },
+                                color = PauseMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    "Перед первой Паузой",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Когда будете выбирать доступные приложения, проверьте банк, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
+                    color = PauseMuted,
+                    lineHeight = 21.sp
+                )
+            }
+
+            item {
+                Button(
+                    onClick = onContinue,
+                    enabled = accessEnabled,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text("Готово, открыть Паузу", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupStep(
+    number: String,
+    title: String,
+    text: String,
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(PauseGreenSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(number, color = PauseGreen, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(text, color = PauseMuted, lineHeight = 20.sp)
+        }
+    }
+}
+
+@Composable
 private fun SetupScreen(
     apps: List<InstalledApp>,
+    alwaysApps: List<InstalledApp>,
     loading: Boolean,
     selected: Set<String>,
     duration: DurationChoice,
@@ -146,6 +337,8 @@ private fun SetupScreen(
     onDuration: (DurationChoice) -> Unit,
     onContinue: () -> Unit,
 ) {
+    val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
@@ -156,20 +349,12 @@ private fun SetupScreen(
             Text("Пауза", fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Оставьте доступным только то, что действительно может понадобиться.",
+                "Выберите, что останется доступно до окончания таймера.",
                 color = PauseMuted,
                 lineHeight = 21.sp
             )
+
             Spacer(Modifier.height(16.dp))
-
-            SectionLabel("ВСЕГДА ДОСТУПНО")
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FixedCompact("Телефон", "Т", Modifier.weight(1f))
-                FixedCompact("Сообщения", "С", Modifier.weight(1f))
-            }
-
-            Spacer(Modifier.height(14.dp))
             SectionLabel("ДЛИТЕЛЬНОСТЬ")
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -183,11 +368,14 @@ private fun SetupScreen(
             }
 
             Spacer(Modifier.height(14.dp))
-            SectionLabel("РАЗРЕШЁННЫЕ ПРИЛОЖЕНИЯ")
+            SectionLabel("ПРИЛОЖЕНИЯ")
             Spacer(Modifier.height(6.dp))
 
             if (loading) {
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator()
                 }
             } else {
@@ -196,8 +384,19 @@ private fun SetupScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 10.dp)
                 ) {
-                    items(apps, key = { it.packageName }) { app ->
-                        AppRow(app, app.packageName in selected) { onToggle(app.packageName, it) }
+                    items(
+                        items = allApps,
+                        key = { it.launchType.name + ":" + it.packageName }
+                    ) { app ->
+                        val locked = app in alwaysApps
+                        AppRow(
+                            app = app,
+                            checked = locked || app.packageName in selected,
+                            locked = locked,
+                            onChecked = { enabled ->
+                                if (!locked) onToggle(app.packageName, enabled)
+                            }
+                        )
                     }
                 }
             }
@@ -216,23 +415,13 @@ private fun SetupScreen(
 @Composable
 private fun ReviewScreen(
     apps: List<InstalledApp>,
+    alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     duration: DurationChoice,
     onBack: () -> Unit,
     onStart: () -> Unit,
 ) {
-    val context = LocalContext.current
     val selectedApps = apps.filter { it.packageName in selected }
-    var protectionEnabled by remember {
-        mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            protectionEnabled = AccessibilityPauseBlocker.isEnabled(context)
-            delay(600)
-        }
-    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -241,120 +430,58 @@ private fun ReviewScreen(
                 .navigationBarsPadding()
                 .padding(20.dp)
         ) {
-            Text("Проверьте всё ещё раз", fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Проверьте перед запуском",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             Spacer(Modifier.height(8.dp))
             Text(
-                "После начала Паузы изменить список приложений или закончить её раньше будет нельзя.",
+                "После запуска список приложений изменить нельзя до окончания таймера.",
                 color = PauseMuted,
                 lineHeight = 22.sp
             )
-            Spacer(Modifier.height(16.dp))
 
+            Spacer(Modifier.height(16.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = PauseWarning),
                 shape = RoundedCornerShape(22.dp)
             ) {
-                Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Проверьте важное", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Column(
+                    Modifier.padding(17.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        "Банк · карты · транспорт · такси · домофон/пропуск · парковка · билеты · документы",
+                        "Точно всё нужное оставили?",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp
+                    )
+                    Text(
+                        "Проверьте банк, карты, транспорт, такси, домофон/пропуск, парковку, билеты и документы.",
                         color = PauseMuted,
                         lineHeight = 20.sp
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Пауза: " + duration.label,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(10.dp))
 
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (protectionEnabled) PauseGreenSoft else MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(15.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Защита Паузы", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (protectionEnabled) "Включена" else "Нужно разрешить один раз",
-                            color = if (protectionEnabled) PauseGreen else PauseMuted,
-                            fontSize = 13.sp
-                        )
-                    }
-                    if (!protectionEnabled) {
-                        TextButton(onClick = { AccessibilityPauseBlocker.openSettings(context) }) {
-                            Text("Разрешить")
-                        }
-                    }
-                }
-            }
-
-            if (!protectionEnabled) {
-                Spacer(Modifier.height(10.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = PauseWarning),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        Text(
-                            "Если Android пишет «Настройки с ограниченным доступом»",
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            "1. Откройте Настройки → Приложения → Пауза.\n" +
-                                "2. Нажмите ⋮ в правом верхнем углу.\n" +
-                                "3. Выберите «Разрешить настройки с ограниченным доступом».\n" +
-                                "4. Вернитесь сюда и снова нажмите «Разрешить».",
-                            color = PauseMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                        TextButton(
-                            onClick = {
-                                val intent = Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.parse("package:" + context.packageName)
-                                )
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Text("Открыть настройки Паузы")
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-            Text("Пауза: " + duration.label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Text("Телефон · Сообщения", fontWeight = FontWeight.Medium)
-            if (selectedApps.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    selectedApps.joinToString(" · ") { it.label },
-                    color = PauseMuted,
-                    lineHeight = 20.sp
-                )
-            }
+            val names = (alwaysApps.map { it.label } + selectedApps.map { it.label })
+                .distinct()
+            Text(
+                names.joinToString(" · "),
+                color = PauseMuted,
+                lineHeight = 21.sp
+            )
 
             Spacer(Modifier.weight(1f))
-            HoldButton(enabled = protectionEnabled, onConfirmed = onStart)
-            if (!protectionEnabled) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Без защиты Пауза не запускается: иначе можно было бы просто уйти на рабочий стол.",
-                    color = PauseMuted,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            HoldButton(onConfirmed = onStart)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onBack,
@@ -375,14 +502,15 @@ private fun ActiveScreen(
     sessionEnd: Long,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
-    onDevStop: () -> Unit,
+    onTapExit: () -> Unit,
 ) {
     ActiveImmersiveMode()
     BackHandler(enabled = true) { }
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var devTapCount by remember { mutableIntStateOf(0) }
-    var lastDevTapAt by remember { mutableLongStateOf(0L) }
+    var tapCount by remember { mutableIntStateOf(0) }
+    var lastTapAt by remember { mutableLongStateOf(0L) }
+
     val remaining = max(0L, sessionEnd - now)
 
     LaunchedEffect(sessionEnd) {
@@ -405,46 +533,45 @@ private fun ActiveScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            Modifier.fillMaxSize().padding(horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(104.dp))
+            Spacer(Modifier.height(92.dp))
 
             Text(
                 text = formatRemaining(remaining),
                 fontSize = 58.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.pointerInput(BuildConfig.DEBUG) {
+                modifier = Modifier.pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
-                            if (!BuildConfig.DEBUG) return@detectTapGestures
                             val tapAt = SystemClock.elapsedRealtime()
-                            if (tapAt - lastDevTapAt > 3_000L) devTapCount = 0
-                            lastDevTapAt = tapAt
-                            devTapCount += 1
-                            if (devTapCount >= 7) {
-                                devTapCount = 0
-                                onDevStop()
+                            if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                            lastTapAt = tapAt
+                            tapCount += 1
+                            if (tapCount >= 7) {
+                                tapCount = 0
+                                onTapExit()
                             }
                         }
                     )
                 }
             )
 
-            Spacer(Modifier.height(72.dp))
+            Spacer(Modifier.height(62.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(26.dp),
-                contentPadding = PaddingValues(bottom = 32.dp)
+                contentPadding = PaddingValues(bottom = 28.dp)
             ) {
                 items(
                     items = shortcuts,
                     key = { it.launchType.name + ":" + it.packageName }
                 ) { app ->
-                    ActiveAppIcon(
+                    LauncherAppIcon(
                         app = app,
                         onClick = { onLaunch(app) }
                     )
@@ -455,27 +582,29 @@ private fun ActiveScreen(
 }
 
 @Composable
-private fun ActiveAppIcon(
+private fun LauncherAppIcon(
     app: InstalledApp,
     onClick: () -> Unit,
 ) {
-    Box(
+    Column(
         modifier = Modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(22.dp))
+            .fillMaxWidth()
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         val bitmap = app.icon
         if (bitmap != null) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = app.label,
-                modifier = Modifier.fillMaxSize(0.78f)
+                modifier = Modifier.size(58.dp)
             )
         } else {
             Box(
-                Modifier.fillMaxSize(0.78f).clip(CircleShape).background(PauseGreenSoft),
+                Modifier
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(PauseGreenSoft),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -486,6 +615,16 @@ private fun ActiveAppIcon(
                 )
             }
         }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = app.label,
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -521,27 +660,11 @@ private fun ActiveImmersiveMode() {
                     window.insetsController?.show(WindowInsets.Type.systemBars())
                 } else {
                     @Suppress("DEPRECATION")
-                    run { decor.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE }
+                    run {
+                        decor.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                    }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun FixedCompact(
-    title: String,
-    initial: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(modifier = modifier, shape = RoundedCornerShape(18.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            InitialIcon(initial)
-            Spacer(Modifier.width(9.dp))
-            Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
         }
     }
 }
@@ -550,6 +673,7 @@ private fun FixedCompact(
 private fun AppRow(
     app: InstalledApp,
     checked: Boolean,
+    locked: Boolean,
     onChecked: (Boolean) -> Unit,
 ) {
     Card(shape = RoundedCornerShape(18.dp)) {
@@ -559,10 +683,20 @@ private fun AppRow(
         ) {
             AppIconSmall(app)
             Spacer(Modifier.width(10.dp))
-            Text(app.label, Modifier.weight(1f), fontWeight = FontWeight.Medium)
+            Column(Modifier.weight(1f)) {
+                Text(app.label, fontWeight = FontWeight.Medium)
+                if (locked) {
+                    Text(
+                        "Всегда доступно",
+                        color = PauseMuted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
             Switch(
                 checked = checked,
-                onCheckedChange = onChecked,
+                onCheckedChange = if (locked) null else onChecked,
+                enabled = !locked,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                     checkedTrackColor = PauseGreen,
@@ -570,6 +704,9 @@ private fun AppRow(
                     uncheckedThumbColor = PauseMuted,
                     uncheckedTrackColor = MaterialTheme.colorScheme.surface,
                     uncheckedBorderColor = PauseMuted,
+                    disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledCheckedTrackColor = PauseGreen,
+                    disabledCheckedBorderColor = PauseGreen,
                 )
             )
         }
@@ -586,17 +723,19 @@ private fun AppIconSmall(app: InstalledApp) {
             modifier = Modifier.size(40.dp)
         )
     } else {
-        InitialIcon(app.label.take(1).uppercase(Locale.getDefault()))
-    }
-}
-
-@Composable
-private fun InitialIcon(initial: String) {
-    Box(
-        Modifier.size(40.dp).clip(CircleShape).background(PauseGreenSoft),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(initial, color = PauseGreen, fontWeight = FontWeight.Bold)
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(PauseGreenSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                app.label.take(1).uppercase(Locale.getDefault()),
+                color = PauseGreen,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -613,13 +752,12 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun HoldButton(
-    enabled: Boolean,
     onConfirmed: () -> Unit,
 ) {
     var pressing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(pressing, enabled) {
-        if (pressing && enabled) {
+    LaunchedEffect(pressing) {
+        if (pressing) {
             delay(2000)
             if (pressing) {
                 pressing = false
@@ -628,32 +766,28 @@ private fun HoldButton(
         }
     }
 
-    val background = if (enabled) PauseGreen else PauseMuted.copy(alpha = 0.35f)
-
     Box(
         Modifier
             .fillMaxWidth()
             .height(54.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(background)
-            .pointerInput(enabled) {
-                if (enabled) {
-                    detectTapGestures(
-                        onPress = {
-                            pressing = true
-                            tryAwaitRelease()
-                            pressing = false
-                        }
-                    )
-                }
+            .background(PauseGreen)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressing = true
+                        tryAwaitRelease()
+                        pressing = false
+                    }
+                )
             },
         contentAlignment = Alignment.Center
     ) {
         Text(
-            when {
-                !enabled -> "Сначала включите защиту"
-                pressing -> "Продолжайте удерживать…"
-                else -> "Удерживайте 2 секунды, чтобы начать"
+            if (pressing) {
+                "Продолжайте удерживать…"
+            } else {
+                "Удерживайте 2 секунды, чтобы начать"
             },
             color = MaterialTheme.colorScheme.onPrimary,
             fontWeight = FontWeight.SemiBold,
