@@ -64,6 +64,24 @@ object ShortVideoSafeNavigator {
         }
     }
 
+    fun escapeDetectedPlayer(
+        service: AccessibilityService,
+        packageName: String,
+        root: AccessibilityNodeInfo?,
+    ): Boolean {
+        return when {
+            packageName == INSTAGRAM_PACKAGE ->
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+
+            else ->
+                navigateToSafeSurface(
+                    service = service,
+                    packageName = packageName,
+                    root = root,
+                )
+        }
+    }
+
     private fun clickFirstKnownId(
         root: AccessibilityNodeInfo,
         ids: List<String>,
