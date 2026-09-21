@@ -49,13 +49,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.4.1.apk
-          test -s Pauza-0.4.1.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.4.2.apk
+          test -s Pauza-0.4.2.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.4.1.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.4.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.4.1"               --notes "Release build: corrected maximum duration 29d 23h 59m."
+            gh release upload pauza-latest Pauza-0.4.2.apk --clobber
+            gh release delete-asset pauza-latest Pauza-0.4.1.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-latest               --title "Пауза 0.4.2"               --notes "Release build: fixed first-run completion and moved app-choice warning into the app."
           else
-            gh release create pauza-latest Pauza-0.4.1.apk               --target "$GITHUB_SHA"               --title "Пауза 0.4.1"               --notes "Release build: corrected maximum duration 29d 23h 59m."
+            gh release create pauza-latest Pauza-0.4.2.apk               --target "$GITHUB_SHA"               --title "Пауза 0.4.2"               --notes "Release build: fixed first-run completion and moved app-choice warning into the app."
           fi
