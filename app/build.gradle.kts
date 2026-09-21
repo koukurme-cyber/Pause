@@ -11,12 +11,12 @@ android {
         applicationId = "ru.pauza.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     signingConfigs {
-        create("dev") {
+        create("stable") {
             storeFile = file("../signing/pause-dev.jks")
             storePassword = "pause-dev-2026"
             keyAlias = "pause-dev"
@@ -26,7 +26,11 @@ android {
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("dev")
+            signingConfig = signingConfigs.getByName("stable")
+        }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("stable")
+            isMinifyEnabled = false
         }
     }
 
