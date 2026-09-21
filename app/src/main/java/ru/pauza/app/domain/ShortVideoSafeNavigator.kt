@@ -75,15 +75,24 @@ object ShortVideoSafeNavigator {
         service: AccessibilityService,
         packageName: String,
         root: AccessibilityNodeInfo?,
+        attempt: Int = 0,
     ): Boolean {
         return when {
             packageName == INSTAGRAM_PACKAGE -> {
-                if (root != null) {
+                if (root == null) return false
+
+                if (attempt % 2 == 0) {
                     if (clickFirstKnownId(root, instagramSearchIds)) return true
-                    if (clickFirstKnownId(root, instagramHomeIds)) return true
                     if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
+                    if (clickFirstKnownId(root, instagramHomeIds)) return true
                     if (clickFirstVisibleLabel(root, listOf("Home", "Главная"))) return true
+                } else {
+                    if (clickFirstKnownId(root, instagramHomeIds)) return true
+                    if (clickFirstVisibleLabel(root, listOf("Home", "Главная"))) return true
+                    if (clickFirstKnownId(root, instagramSearchIds)) return true
+                    if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
                 }
+
                 false
             }
 
