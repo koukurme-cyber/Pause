@@ -47,7 +47,7 @@ jobs:
           sed -i 's/versionName = "0.6.3"/versionName = "0.6.23"/' app/build.gradle.kts
 
       - name: Test short-video regressions
-        run: gradle --no-daemon :app:testReleaseUnitTest --stacktrace
+        run: gradle --no-daemon :app:testReleaseUnitTest -Pandroid.onlyEnableUnitTestForTheTestedBuildType=false --stacktrace
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
