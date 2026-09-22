@@ -55,6 +55,11 @@ class ShortVideoRegressionTest {
 
     @Before fun setUp() {
         service = spy(Robolectric.buildService(PauseAccessibilityService::class.java).create().get())
+        // Mockito copies the service, but its preconstructed inner Runnable still
+        // references the original. Bind that callback to the instrumented instance.
+        val watchdog = field("watchdog")!!
+        watchdog.javaClass.declaredFields.first { it.type == PauseAccessibilityService::class.java }
+            .apply { isAccessible = true }.set(watchdog, service)
         val window = mock(AccessibilityWindowInfo::class.java)
         `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
         `when`(window.isFocused).thenReturn(true)
