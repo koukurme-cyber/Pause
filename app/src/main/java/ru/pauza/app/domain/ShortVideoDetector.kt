@@ -38,6 +38,9 @@ object ShortVideoDetector {
         "search_tab",
         "profile_tab",
         "direct_tab",
+        "explore_tab", "tab_search", "navigation_search",
+        "tab_feed", "home_tab", "navigation_home", "tab_bar_home_button",
+        "tab_icon_0", "tab_home", "ig_nav_tab_home",
     )
 
     private val rutubeStrongIdHints = setOf(
@@ -68,6 +71,7 @@ object ShortVideoDetector {
         event: AccessibilityEvent?,
     ): Boolean {
         event ?: return false
+        if (event.packageName?.toString() != packageName) return false
         if (
             event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
             event.eventType != AccessibilityEvent.TYPE_VIEW_SELECTED
@@ -159,7 +163,9 @@ object ShortVideoDetector {
         packageName: String,
         root: AccessibilityNodeInfo?,
     ): Boolean {
-        if (packageName != INSTAGRAM_PACKAGE || root == null) return true
+        if (root == null || root.packageName?.toString() != packageName) return false
+        if (isShortVideoScreen(packageName, root, null)) return false
+        if (packageName != INSTAGRAM_PACKAGE) return true
 
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
@@ -174,8 +180,8 @@ object ShortVideoDetector {
                 .orEmpty()
 
             if (
-                node.isVisibleToUser &&
-                instagramSafeTabIds.any { hint -> id.endsWith(hint) }
+                node.isVisibleToUser && node.isSelected &&
+                instagramSafeTabIds.any { hint -> id.substringAfterLast('/') == hint }
             ) {
                 return true
             }
@@ -234,7 +240,7 @@ object ShortVideoDetector {
         queue.add(root)
 
         val rootBounds = Rect().also(root::getBoundsInScreen)
-        val rootArea = (rootBounds.width().coerceAtLeast(1) * rootBounds.height().coerceAtLeast(1)).toLong()
+        val rootArea = rootBounds.width().coerceAtLeast(1).toLong() * rootBounds.height().coerceAtLeast(1)
 
         var visited = 0
         while (queue.isNotEmpty() && visited < MAX_NODES) {
@@ -253,8 +259,10 @@ object ShortVideoDetector {
                     resourceIds.add(id)
                 } else if (node.isVisibleToUser) {
                     val bounds = Rect().also(node::getBoundsInScreen)
-                    val area = (bounds.width().coerceAtLeast(0) * bounds.height().coerceAtLeast(0)).toLong()
-                    if (area >= (rootArea * INSTAGRAM_FULLSCREEN_AREA_RATIO).toLong()) {
+                    // Off-screen cached pages must not count as visible players.
+                    val intersects = bounds.intersect(rootBounds)
+                    val area = bounds.width().coerceAtLeast(0).toLong() * bounds.height().coerceAtLeast(0)
+                    if (intersects && area >= (rootArea * INSTAGRAM_FULLSCREEN_AREA_RATIO).toLong()) {
                         resourceIds.add(id)
                     }
                 }

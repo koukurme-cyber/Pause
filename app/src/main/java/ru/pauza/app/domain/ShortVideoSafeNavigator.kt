@@ -79,7 +79,13 @@ object ShortVideoSafeNavigator {
     ): Boolean {
         return when {
             packageName == INSTAGRAM_PACKAGE -> {
-                if (root == null) return false
+                if (root == null || root.packageName?.toString() != packageName) return false
+
+                // Search can open a standalone viewer with no navigation tabs.
+                // One Back only, on a fresh confirmed player; never a Back loop.
+                if (attempt == 1 && ShortVideoDetector.isShortVideoScreen(packageName, root, null)) {
+                    return service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                }
 
                 if (attempt % 2 == 0) {
                     if (clickFirstKnownId(root, instagramSearchIds)) return true
@@ -149,6 +155,8 @@ object ShortVideoSafeNavigator {
         labels: List<String>,
     ): Boolean {
         for (label in labels) {
+            val described = findByExactDescription(root, label)
+            if (described != null && clickNodeOrAncestor(described)) return true
             val nodes = runCatching {
                 root.findAccessibilityNodeInfosByText(label)
             }.getOrDefault(emptyList())
@@ -192,7 +200,8 @@ object ShortVideoSafeNavigator {
             val node = queue.removeFirst()
             visited += 1
 
-            if (node.contentDescription?.toString()?.equals(label, ignoreCase = true) == true) {
+            if (node.isVisibleToUser &&
+                node.contentDescription?.toString()?.equals(label, ignoreCase = true) == true) {
                 return node
             }
 

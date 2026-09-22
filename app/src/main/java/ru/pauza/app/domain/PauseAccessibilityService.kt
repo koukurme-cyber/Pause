@@ -85,6 +85,7 @@ class PauseAccessibilityService : AccessibilityService() {
         val deviceLocked = keyguardManager.isKeyguardLocked || keyguardManager.isDeviceLocked
 
         if (!screenInteractive || deviceLocked) {
+            resetShortVideoNavigation()
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
             hideShortNotice()
@@ -104,6 +105,7 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         if (isSystemEscapeEvent(event)) {
+            resetShortVideoNavigation()
             hideShortNotice()
             performGlobalAction(GLOBAL_ACTION_BACK)
             returnToPause(force = true)
@@ -111,6 +113,10 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+        if (shortVideoBlockedPackage != null && foregroundPackage != shortVideoBlockedPackage) {
+            resetShortVideoNavigation()
+            hideShortNotice()
+        }
         val allowed = store.selectedPackages +
             appsRepository.alwaysAllowedPackages() +
             packageName
@@ -118,6 +124,12 @@ class PauseAccessibilityService : AccessibilityService() {
         if (foregroundPackage in allowed) {
             if (store.blockShortVideos && ShortVideoDetector.isSupportedPackage(foregroundPackage)) {
                 val nowElapsed = SystemClock.elapsedRealtime()
+                // Missing window data is unknown, never evidence of a successful exit.
+                val appRoot = resolveApplicationRoot(foregroundPackage)
+                if (appRoot == null) {
+                    shortVideoExitCandidateAt = 0L
+                    return
+                }
 
                 val earlyEntryAction = ShortVideoDetector.isShortEntryAction(
                     packageName = foregroundPackage,
@@ -125,7 +137,6 @@ class PauseAccessibilityService : AccessibilityService() {
                 )
 
                 if (earlyEntryAction) {
-                    val appRoot = resolveApplicationRoot(foregroundPackage)
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
@@ -139,31 +150,33 @@ class PauseAccessibilityService : AccessibilityService() {
                 val shouldScanShortVideo =
                     ShortVideoDetector.usesBackgroundScreenDetection(foregroundPackage) &&
                         (
-                            event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                            shortVideoNavigating ||
+                                event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                                 nowElapsed - lastShortContentScanAt >= SHORT_CONTENT_SCAN_THROTTLE_MS
                         )
 
-                val shortVideoDetected =
-                    if (shouldScanShortVideo) {
-                        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                            lastShortContentScanAt = nowElapsed
-                        }
-                        ShortVideoDetector.isShortVideoScreen(
-                            packageName = foregroundPackage,
-                            root = resolveApplicationRoot(foregroundPackage),
-                            event = event,
-                        )
-                    } else {
-                        false
-                    }
+                // A throttled scan must not advance the exit-confirmation timer.
+                if (!shouldScanShortVideo) return
+
+                if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                    lastShortContentScanAt = nowElapsed
+                }
+                val shortVideoDetected = ShortVideoDetector.isShortVideoScreen(
+                    packageName = foregroundPackage,
+                    root = appRoot,
+                    event = event,
+                )
 
                 if (shortVideoDetected) {
                     shortVideoExitCandidateAt = 0L
+                    hideShortNotice()
+                    // Entry interception may have run before the player opened.
+                    shortVideoUsesDetectedPlayerEscape = true
 
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
-                            appRoot = resolveApplicationRoot(foregroundPackage),
+                            appRoot = appRoot,
                             detectedPlayer = true,
                         )
                     } else if (
@@ -176,7 +189,7 @@ class PauseAccessibilityService : AccessibilityService() {
                         shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
                         navigateShortVideoEscape(
                             foregroundPackage = foregroundPackage,
-                            appRoot = resolveApplicationRoot(foregroundPackage),
+                            appRoot = appRoot,
                         )
                     }
                     return
@@ -186,7 +199,6 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoNavigating &&
                     foregroundPackage == shortVideoBlockedPackage
                 ) {
-                    val appRoot = resolveApplicationRoot(foregroundPackage)
                     val safeSurfaceConfirmed =
                         ShortVideoDetector.isConfirmedSafeSurface(
                             packageName = foregroundPackage,
@@ -224,8 +236,8 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoBlockedPackage = null
                     shortVideoUsesDetectedPlayerEscape = false
                     shortVideoExitCandidateAt = 0L
-                    shortVideoCooldownUntil =
-                        maxOf(shortVideoCooldownUntil, nowElapsed + SHORT_VIDEO_POST_EXIT_COOLDOWN_MS)
+                    // Rate-limit notices, not protection against a new player entry.
+                    shortVideoCooldownUntil = 0L
 
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
@@ -253,16 +265,8 @@ class PauseAccessibilityService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
 
         shortVideoUsesDetectedPlayerEscape = detectedPlayer
-        val navigated = navigateShortVideoEscape(
-            foregroundPackage = foregroundPackage,
-            appRoot = appRoot,
-        )
-
-        if (!navigated) {
-            resetShortVideoNavigation()
-            return
-        }
-
+        // Keep the episode even when a click cannot be dispatched. Retry from fresh
+        // window data instead of restarting at attempt zero on every event.
         shortVideoNavigating = true
         shortVideoBlockedPackage = foregroundPackage
         shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
@@ -270,6 +274,7 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoExitCandidateAt = 0L
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
+        navigateShortVideoEscape(foregroundPackage, appRoot)
     }
 
     private fun navigateShortVideoEscape(
@@ -414,8 +419,10 @@ class PauseAccessibilityService : AccessibilityService() {
         windows
             .asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .sortedByDescending { it.isFocused }
             .mapNotNull { it.root }
             .firstOrNull { it.packageName?.toString() == targetPackage }
+            ?: rootInActiveWindow?.takeIf { it.packageName?.toString() == targetPackage }
 
     private fun roundedBackground(color: Int, radiusDp: Float) =
         GradientDrawable().apply {
@@ -547,7 +554,6 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SHORT_VIDEO_MAX_RETRIES = 4
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
-        private const val SHORT_VIDEO_POST_EXIT_COOLDOWN_MS = 1_500L
         private const val SHORT_VIDEO_NOTICE_DURATION_MS = 1_600L
         private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 3_000L
         private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 300L
