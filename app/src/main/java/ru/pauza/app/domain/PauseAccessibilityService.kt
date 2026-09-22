@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -30,11 +31,12 @@ class PauseAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
-    private val launcherPackageName by lazy {
-        packageManager.resolveActivity(
-            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
-            PackageManager.MATCH_DEFAULT_ONLY,
-        )?.activityInfo?.packageName
+    private val launcherPackages by lazy {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        (packageManager.queryIntentActivities(home, PackageManager.MATCH_ALL)
+            .mapNotNull { it.activityInfo?.packageName } +
+            listOfNotNull(packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName)).toSet() - packageName
     }
 
     private var lastReturnAt = 0L
@@ -53,11 +55,17 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortNoticeOverlay: View? = null
     private var shortNoticeDismissRunnable: Runnable? = null
     private var shortNoticeHideAt = 0L
+    private var shortNoticePackage: String? = null
+    private var shortNoticeArmed = true
+    private var shortSafeSince = 0L
 
     private val watchdog = object : Runnable {
         override fun run() {
-            enforceCurrentWindow()
-            handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            try {
+                enforceSafely()
+            } finally {
+                handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            }
         }
     }
 
@@ -68,7 +76,16 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        enforceCurrentWindow(event)
+        enforceSafely(event)
+    }
+
+    private fun enforceSafely(event: AccessibilityEvent? = null) {
+        try {
+            enforceCurrentWindow(event)
+        } catch (error: RuntimeException) {
+            // A transient window/startActivity failure must not stop the watchdog.
+            Log.w("PauseProtection", "Window enforcement failed; will retry", error)
+        }
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
@@ -104,15 +121,19 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (isSystemEscapeEvent(event)) {
+        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        if (foregroundPackage in launcherPackages || isSystemEscapeEvent(event)) {
             resetShortVideoNavigation()
             hideShortNotice()
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            returnToPause(force = true)
+            // Back can resume RuTube or race Home. Bring Pause forward directly.
+            returnToPause()
             return
         }
-
-        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        if (shortNoticePackage != null && foregroundPackage != shortNoticePackage) {
+            hideShortNotice()
+            shortNoticeArmed = true
+            shortSafeSince = 0L
+        }
         if (shortVideoBlockedPackage != null && foregroundPackage != shortVideoBlockedPackage) {
             resetShortVideoNavigation()
             hideShortNotice()
@@ -127,6 +148,7 @@ class PauseAccessibilityService : AccessibilityService() {
                 // Missing window data is unknown, never evidence of a successful exit.
                 val appRoot = resolveApplicationRoot(foregroundPackage)
                 if (appRoot == null) {
+                    shortSafeSince = 0L
                     shortVideoExitCandidateAt = 0L
                     return
                 }
@@ -137,6 +159,8 @@ class PauseAccessibilityService : AccessibilityService() {
                 )
 
                 if (earlyEntryAction) {
+                    shortNoticeArmed = true
+                    shortSafeSince = 0L
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
@@ -169,7 +193,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
                 if (shortVideoDetected) {
                     shortVideoExitCandidateAt = 0L
-                    hideShortNotice()
+                    shortSafeSince = 0L
+                    // Keep an existing notice until its original deadline.
                     // Entry interception may have run before the player opened.
                     shortVideoUsesDetectedPlayerEscape = true
 
@@ -193,6 +218,17 @@ class PauseAccessibilityService : AccessibilityService() {
                         )
                     }
                     return
+                }
+
+                if (!shortVideoNavigating) {
+                    if (ShortVideoDetector.isConfirmedSafeSurface(foregroundPackage, appRoot)) {
+                        if (shortSafeSince == 0L) shortSafeSince = nowElapsed
+                        if (nowElapsed - shortSafeSince >= SHORT_VIDEO_NOTICE_REARM_MS) {
+                            shortNoticeArmed = true
+                        }
+                    } else {
+                        shortSafeSince = 0L
+                    }
                 }
 
                 if (
@@ -241,8 +277,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
-                        if (nowElapsed - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS) {
-                            showShortVideoOverlay()
+                        if (shortNoticeArmed && nowElapsed - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS) {
+                            showShortVideoOverlay(foregroundPackage)
                         }
                     }
                 }
@@ -306,13 +342,12 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoUsesDetectedPlayerEscape = false
         shortVideoExitCandidateAt = 0L
         lastShortContentScanAt = 0L
+        shortSafeSince = 0L
+        shortNoticeArmed = true
     }
 
-    private fun showShortVideoOverlay() {
+    private fun showShortVideoOverlay(ownerPackage: String) {
         if (shortNoticeOverlay != null) return
-
-        lastShortNoticeShownAt = SystemClock.elapsedRealtime()
-        shortNoticeHideAt = lastShortNoticeShownAt + SHORT_VIDEO_NOTICE_DURATION_MS
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -405,6 +440,10 @@ class PauseAccessibilityService : AccessibilityService() {
         runCatching {
             getSystemService(WindowManager::class.java).addView(container, params)
             shortNoticeOverlay = container
+            shortNoticePackage = ownerPackage
+            shortNoticeArmed = false
+            lastShortNoticeShownAt = SystemClock.elapsedRealtime()
+            shortNoticeHideAt = lastShortNoticeShownAt + SHORT_VIDEO_NOTICE_DURATION_MS
 
             shortNoticeDismissRunnable?.let(handler::removeCallbacks)
             shortNoticeDismissRunnable = Runnable {
@@ -441,13 +480,6 @@ class PauseAccessibilityService : AccessibilityService() {
         event ?: return false
 
         val eventPackage = event.packageName?.toString().orEmpty()
-        if (
-            launcherPackageName != null &&
-            eventPackage == launcherPackageName
-        ) {
-            return true
-        }
-
         val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
         val sourceId =
             event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
@@ -467,35 +499,24 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val eventPackage = event?.packageName?.toString()
-        if (
-            !eventPackage.isNullOrBlank() &&
-            eventPackage != SYSTEM_UI_PACKAGE &&
-            (
-                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-                )
-        ) {
-            return eventPackage
-        }
-
-        val focusedApplication = windows
-            .asSequence()
-            .filter {
-                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
-                    it.isFocused
-            }
+        // A video app can keep sending events while Home is already visible,
+        // especially in PiP. Current full-size windows take precedence.
+        val currentApplication = windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && !it.isInPictureInPictureMode }
+            .filter { it.isActive || it.isFocused }
+            .sortedByDescending { it.isActive }
             .mapNotNull { it.root?.packageName?.toString() }
-            .firstOrNull { it != SYSTEM_UI_PACKAGE }
-
-        if (focusedApplication != null) return focusedApplication
+            .firstOrNull()
+        if (!currentApplication.isNullOrBlank()) return currentApplication
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        if (!rootPackage.isNullOrBlank() && rootPackage != SYSTEM_UI_PACKAGE) {
-            return rootPackage
-        }
+        val pipPackages = windows.filter { it.isInPictureInPictureMode }
+            .mapNotNull { it.root?.packageName?.toString() }.toSet()
+        if (!rootPackage.isNullOrBlank() && rootPackage !in pipPackages) return rootPackage
 
-        return eventPackage
+        // A launcher event still matters when Android temporarily provides no roots.
+        val eventPackage = event?.packageName?.toString()
+        return eventPackage?.takeUnless { it in pipPackages }
     }
 
     private fun returnToPause(force: Boolean = false) {
@@ -529,6 +550,7 @@ class PauseAccessibilityService : AccessibilityService() {
         shortNoticeDismissRunnable?.let(handler::removeCallbacks)
         shortNoticeDismissRunnable = null
         shortNoticeHideAt = 0L
+        shortNoticePackage = null
 
         val current = shortNoticeOverlay ?: return
         runCatching {
@@ -554,6 +576,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SHORT_VIDEO_MAX_RETRIES = 4
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
+        private const val SHORT_VIDEO_NOTICE_REARM_MS = 2_000L
         private const val SHORT_VIDEO_NOTICE_DURATION_MS = 1_600L
         private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 3_000L
         private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 300L

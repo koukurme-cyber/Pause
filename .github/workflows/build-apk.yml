@@ -43,8 +43,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 31/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.23"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 32/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.24"/' app/build.gradle.kts
 
       - name: Test short-video regressions
         run: gradle --no-daemon :app:testReleaseUnitTest -Pandroid.onlyEnableUnitTestForTheTestedBuildType=false --stacktrace
@@ -58,11 +58,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.23.apk
-          test -s Pauza-0.6.23.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.24.apk
+          test -s Pauza-0.6.24.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.23.apk --clobber
+            gh release upload pauza-latest Pauza-0.6.24.apk --clobber
             gh release delete-asset pauza-latest Pauza-0.6.21.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.20.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.19.apk -y >/dev/null 2>&1 || true
@@ -74,7 +74,7 @@ jobs:
             gh release delete-asset pauza-latest Pauza-0.6.13.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.12.apk -y >/dev/null 2>&1 || true
             gh release delete-asset pauza-latest Pauza-0.6.11.apk -y >/dev/null 2>&1 || true
-                        gh release edit pauza-latest               --title "Пауза 0.6.23"               --notes "Reels exit fix: missing or skipped scans cannot confirm exit; selected safe tab required; one controlled Back from confirmed player; bounded retries and single notice. Automated regression tests passed; Instagram device verification still required."
+                        gh release edit pauza-latest               --title "Пауза 0.6.24"               --notes "Stable short-video notice lifetime; foreground window priority over stale player events; PiP excluded; Home return enforced independently of allowlist; watchdog recovers from transient errors. Device verification required."
           else
-            gh release create pauza-latest Pauza-0.6.23.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.23"               --notes "Release build: wheel picker typography reduced by 2sp."
+            gh release create pauza-latest Pauza-0.6.24.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.24"               --notes "Release build: wheel picker typography reduced by 2sp."
           fi
