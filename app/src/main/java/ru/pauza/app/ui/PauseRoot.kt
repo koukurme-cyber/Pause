@@ -651,7 +651,10 @@ private fun ReviewScreen(
     onBack: () -> Unit,
     onStart: () -> Unit,
 ) {
-    val selectedApps = apps.filter { it.packageName in selected }
+    val reviewApps = remember(apps, alwaysApps, selected) {
+        (alwaysApps + apps.filter { it.packageName in selected })
+            .distinctBy { it.launchType.name + ":" + it.packageName }
+    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -702,15 +705,32 @@ private fun ReviewScreen(
             )
             Spacer(Modifier.height(10.dp))
 
-            val names = (alwaysApps.map { it.label } + selectedApps.map { it.label })
-                .distinct()
             Text(
-                names.joinToString(" · "),
+                "Доступные приложения",
                 color = PauseMuted,
-                lineHeight = 21.sp
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = .8.sp
             )
+            Spacer(Modifier.height(10.dp))
 
-            Spacer(Modifier.weight(1f))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                contentPadding = PaddingValues(bottom = 18.dp)
+            ) {
+                items(
+                    items = reviewApps,
+                    key = { it.launchType.name + ":" + it.packageName }
+                ) { app ->
+                    LauncherAppIcon(app = app)
+                }
+            }
+
             HoldButton(onConfirmed = onStart)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -865,12 +885,15 @@ private fun ActiveScreen(
 @Composable
 private fun LauncherAppIcon(
     app: InstalledApp,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
 ) {
+    val interactionModifier =
+        if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .then(interactionModifier),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         val bitmap = app.icon
