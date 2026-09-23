@@ -79,7 +79,13 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
-        if (end <= 0L || System.currentTimeMillis() >= end) {
+        if (end <= 0L) {
+            hideOverlay()
+            return
+        }
+
+        if (System.currentTimeMillis() >= end) {
+            DeviceOwnerPauseBlocker.releasePolicy(this)
             hideOverlay()
             return
         }
