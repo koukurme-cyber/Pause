@@ -43,6 +43,7 @@ import kotlinx.coroutines.withContext
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
+import ru.pauza.app.domain.DeviceOwnerPauseBlocker
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.model.InstalledApp
 import ru.pauza.app.ui.theme.PauseGreen
@@ -76,6 +77,9 @@ fun PauseRoot(
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
+    var deviceOwnerEnabled by remember {
+        mutableStateOf(DeviceOwnerPauseBlocker.isDeviceOwner(context))
+    }
     var firstSetupCompleted by remember {
         mutableStateOf(store.firstSetupCompleted)
     }
@@ -83,8 +87,14 @@ fun PauseRoot(
     LaunchedEffect(Unit) {
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
+            deviceOwnerEnabled = DeviceOwnerPauseBlocker.isDeviceOwner(context)
             delay(700)
         }
+    }
+
+    if (!deviceOwnerEnabled) {
+        DeviceOwnerSetupScreen()
+        return
     }
 
     if (!firstSetupCompleted || !accessibilityEnabled) {
@@ -187,6 +197,57 @@ fun PauseRoot(
                 screen = Screen.SETUP
             }
         )
+    }
+}
+
+@Composable
+private fun DeviceOwnerSetupScreen() {
+    Surface(
+        Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Нужен системный режим",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Для строгой Паузы Android должен назначить приложение владельцем устройства. " +
+                    "Это даёт системный белый список приложений и позволяет отключить Home и Недавние без обходных трюков.",
+                color = PauseMuted,
+                lineHeight = 22.sp
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("После установки APK выполните через ADB:", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "adb shell dpm set-device-owner ru.pauza.app/.admin.PauseDeviceAdminReceiver",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+
+            Text(
+                "После успешной команды этот экран исчезнет автоматически. Специальные возможности останутся дополнительной защитой.",
+                color = PauseMuted,
+                lineHeight = 20.sp
+            )
+        }
     }
 }
 
