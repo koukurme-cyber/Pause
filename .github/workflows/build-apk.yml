@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - whitelist-only-0.6.29
+      - whitelist-only-0.6.30
 
 concurrency:
   group: pauza-main-build
@@ -44,8 +44,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 37/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.29"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 38/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.30"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -56,12 +56,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.29.apk
-          test -s Pauza-0.6.29.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.30.apk
+          test -s Pauza-0.6.30.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.29.apk --clobber
-            gh release edit pauza-latest --title "Пауза 0.6.29" --notes "Whitelist-only build. Restores the complete historical Home/Recents accessibility stack from 0.6.21-0.6.24: click/selection/content events, view IDs, HOME visibility, launcher detection and Recents interception. Short-video blocking remains excluded."
+            gh release upload pauza-latest Pauza-0.6.30.apk --clobber
+            gh release edit pauza-latest --title "Пауза 0.6.30" --notes "Experimental system task pinning build. Starts Android lock-task/screen-pinning mode when Pause begins and launches allowed apps without NEW_TASK so they can remain inside the pinned task. Accessibility whitelist protection remains as fallback; short-video blocking is excluded."
           else
-            gh release create pauza-latest Pauza-0.6.29.apk --target "$GITHUB_SHA" --title "Пауза 0.6.29" --notes "Whitelist-only build. Restores the complete historical Home/Recents accessibility stack from 0.6.21-0.6.24: click/selection/content events, view IDs, HOME visibility, launcher detection and Recents interception. Short-video blocking remains excluded."
+            gh release create pauza-latest Pauza-0.6.30.apk --target "$GITHUB_SHA" --title "Пауза 0.6.30" --notes "Experimental system task pinning build. Starts Android lock-task/screen-pinning mode when Pause begins and launches allowed apps without NEW_TASK so they can remain inside the pinned task. Accessibility whitelist protection remains as fallback; short-video blocking is excluded."
           fi
