@@ -1,5 +1,8 @@
 package ru.pauza.app.data
 
+import android.app.Activity
+import android.app.ActivityOptions
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,6 +11,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Build
 import ru.pauza.app.model.AppLaunchType
 import ru.pauza.app.model.InstalledApp
 
@@ -65,8 +69,21 @@ class InstalledAppsRepository(private val context: Context) {
         } ?: return false
 
         return runCatching {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            val dpm = context.getSystemService(DevicePolicyManager::class.java)
+            val lockTaskReady =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                    dpm.isDeviceOwnerApp(context.packageName) &&
+                    dpm.isLockTaskPermitted(app.packageName)
+
+            if (lockTaskReady) {
+                val options = ActivityOptions.makeBasic().setLockTaskEnabled(true)
+                context.startActivity(intent, options.toBundle())
+            } else {
+                if (context !is Activity) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
             true
         }.getOrDefault(false)
     }
