@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
@@ -28,6 +29,12 @@ class PauseAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
+    private val launcherPackageName by lazy {
+        packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName
+    }
 
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
@@ -81,6 +88,13 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (isSystemEscapeEvent(event)) {
+            hideOverlay()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            returnToPause(force = true)
+            return
+        }
+
         val foregroundPackage = resolveForegroundPackage(event) ?: return
         val allowed = store.selectedPackages +
             appsRepository.alwaysAllowedPackages() +
@@ -95,11 +109,42 @@ class PauseAccessibilityService : AccessibilityService() {
         returnToPause()
     }
 
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        event ?: return false
+
+        val eventPackage = event.packageName?.toString().orEmpty()
+        if (
+            launcherPackageName != null &&
+            eventPackage == launcherPackageName
+        ) {
+            return true
+        }
+
+        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceId =
+            event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val eventText =
+            event.text.joinToString(" ")
+                .lowercase(Locale.ROOT)
+
+        val recentsSignature =
+            listOf("recent", "recents", "overview", "quickstep", "taskview", "task_view")
+                .any { hint ->
+                    className.contains(hint) ||
+                        sourceId.contains(hint) ||
+                        eventText.contains(hint)
+                }
+
+        return eventPackage == SYSTEM_UI_PACKAGE && recentsSignature
+    }
+
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
         val focusedApplication = windows
             .asSequence()
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.isFocused }
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    it.isFocused
+            }
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull { it != SYSTEM_UI_PACKAGE }
 
@@ -113,9 +158,9 @@ class PauseAccessibilityService : AccessibilityService() {
         return event?.packageName?.toString()
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
