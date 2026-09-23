@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - whitelist-only-0.6.29
+      - whitelist-only-0.6.31
 
 concurrency:
   group: pauza-main-build
@@ -44,8 +44,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 37/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.6.29"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 39/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.6.31"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -56,12 +56,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.29.apk
-          test -s Pauza-0.6.29.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.31.apk
+          test -s Pauza-0.6.31.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.29.apk --clobber
-            gh release edit pauza-latest --title "Пауза 0.6.29" --notes "Whitelist-only build. Restores the complete historical Home/Recents accessibility stack from 0.6.21-0.6.24: click/selection/content events, view IDs, HOME visibility, launcher detection and Recents interception. Short-video blocking remains excluded."
+            gh release upload pauza-latest Pauza-0.6.31.apk --clobber
+            gh release edit pauza-latest --title "Пауза 0.6.31" --notes "Whitelist behavior restored. Screen pinning removed. While an allowed external app is open, an accessibility overlay guards the Android navigation-bar area and routes taps back to Pause. Historical Home/Recents detection remains as fallback. Short-video blocking remains excluded."
           else
-            gh release create pauza-latest Pauza-0.6.29.apk --target "$GITHUB_SHA" --title "Пауза 0.6.29" --notes "Whitelist-only build. Restores the complete historical Home/Recents accessibility stack from 0.6.21-0.6.24: click/selection/content events, view IDs, HOME visibility, launcher detection and Recents interception. Short-video blocking remains excluded."
+            gh release create pauza-latest Pauza-0.6.31.apk --target "$GITHUB_SHA" --title "Пауза 0.6.31" --notes "Whitelist behavior restored. Screen pinning removed. While an allowed external app is open, an accessibility overlay guards the Android navigation-bar area and routes taps back to Pause. Historical Home/Recents detection remains as fallback. Short-video blocking remains excluded."
           fi
