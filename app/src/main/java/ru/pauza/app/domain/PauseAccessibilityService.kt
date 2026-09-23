@@ -73,7 +73,7 @@ class PauseAccessibilityService : AccessibilityService() {
         try {
             enforceCurrentWindow(event)
         } catch (error: RuntimeException) {
-            Log.w("PauseProtection", "Window enforcement failed; will retry", error)
+            Log.w("PauseProtection", "Foreground enforcement failed; will retry", error)
         }
     }
 
@@ -106,18 +106,16 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (isSystemEscapeEvent(event)) {
-            hideOverlay()
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            returnToPause(force = true)
-            return
-        }
-
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
-        if (foregroundPackage in launcherPackages) {
+        // Home and Android's own navigation surfaces are harmless. The user may
+        // see them; enforcement starts when an actual application is resumed.
+        if (
+            foregroundPackage == packageName ||
+            foregroundPackage == SYSTEM_UI_PACKAGE ||
+            foregroundPackage in launcherPackages
+        ) {
             hideOverlay()
-            returnToPause(force = true)
             return
         }
 
@@ -134,48 +132,12 @@ class PauseAccessibilityService : AccessibilityService() {
         returnToPause()
     }
 
-    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
-        event ?: return false
-
-        val eventPackage = event.packageName?.toString().orEmpty()
-        if (eventPackage in launcherPackages) return true
-
-        if (eventPackage != SYSTEM_UI_PACKAGE) return false
-
-        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
-        val sourceId = event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
-        val eventText = event.text.joinToString(" ").lowercase(Locale.ROOT)
-
-        val recentsSignature =
-            listOf(
-                "recent",
-                "recents",
-                "overview",
-                "quickstep",
-                "taskview",
-                "task_view",
-                "recent_apps",
-                "recentapps"
-            ).any { hint ->
-                className.contains(hint) ||
-                    sourceId.contains(hint) ||
-                    eventText.contains(hint)
-            }
-
-        return recentsSignature
-    }
-
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val eventPackage = event?.packageName?.toString()
+        // Primary detector: Android Usage Access. Unlike Accessibility windows,
+        // this records the application that actually entered the resumed state.
+        UsageAccessMonitor.foregroundPackage(this)?.let { return it }
 
-        if (
-            !eventPackage.isNullOrBlank() &&
-            eventPackage != SYSTEM_UI_PACKAGE &&
-            eventPackage in launcherPackages
-        ) {
-            return eventPackage
-        }
-
+        // Fallback: accessibility windows/events for OEMs that delay usage events.
         val currentApplication = windows.asSequence()
             .filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
@@ -189,21 +151,14 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!currentApplication.isNullOrBlank()) return currentApplication
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        val pipPackages = windows
-            .filter { it.isInPictureInPictureMode }
-            .mapNotNull { it.root?.packageName?.toString() }
-            .toSet()
+        if (!rootPackage.isNullOrBlank()) return rootPackage
 
-        if (!rootPackage.isNullOrBlank() && rootPackage !in pipPackages) {
-            return rootPackage
-        }
-
-        return eventPackage?.takeUnless { it in pipPackages }
+        return event?.packageName?.toString()
     }
 
-    private fun returnToPause(force: Boolean = false) {
+    private fun returnToPause() {
         val now = SystemClock.elapsedRealtime()
-        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
@@ -285,8 +240,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
-        private const val RETURN_DEBOUNCE_MS = 250L
-        private const val WATCHDOG_INTERVAL_MS = 300L
+        private const val RETURN_DEBOUNCE_MS = 180L
+        private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
     }
 }
