@@ -2,18 +2,20 @@ package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
-import android.view.accessibility.AccessibilityWindowInfo
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
 import android.widget.TextView
 import ru.pauza.app.MainActivity
@@ -29,6 +31,18 @@ class PauseAccessibilityService : AccessibilityService() {
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
+    private val launcherPackages by lazy {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        (
+            packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName } +
+                listOfNotNull(
+                    packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                        ?.activityInfo?.packageName
+                )
+            ).toSet() - packageName
+    }
+
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
@@ -37,8 +51,11 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private val watchdog = object : Runnable {
         override fun run() {
-            enforceCurrentWindow()
-            handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            try {
+                enforceSafely()
+            } finally {
+                handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            }
         }
     }
 
@@ -49,7 +66,15 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        enforceCurrentWindow(event)
+        enforceSafely(event)
+    }
+
+    private fun enforceSafely(event: AccessibilityEvent? = null) {
+        try {
+            enforceCurrentWindow(event)
+        } catch (error: RuntimeException) {
+            Log.w("PauseProtection", "Window enforcement failed; will retry", error)
+        }
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
@@ -81,7 +106,21 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (isSystemEscapeEvent(event)) {
+            hideOverlay()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            returnToPause(force = true)
+            return
+        }
+
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+
+        if (foregroundPackage in launcherPackages) {
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
         val allowed = store.selectedPackages +
             appsRepository.alwaysAllowedPackages() +
             packageName
@@ -95,27 +134,76 @@ class PauseAccessibilityService : AccessibilityService() {
         returnToPause()
     }
 
-    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val focusedApplication = windows
-            .asSequence()
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.isFocused }
-            .mapNotNull { it.root?.packageName?.toString() }
-            .firstOrNull { it != SYSTEM_UI_PACKAGE }
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        event ?: return false
 
-        if (focusedApplication != null) return focusedApplication
+        val eventPackage = event.packageName?.toString().orEmpty()
+        if (eventPackage in launcherPackages) return true
+
+        if (eventPackage != SYSTEM_UI_PACKAGE) return false
+
+        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceId = event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val eventText = event.text.joinToString(" ").lowercase(Locale.ROOT)
+
+        val recentsSignature =
+            listOf(
+                "recent",
+                "recents",
+                "overview",
+                "quickstep",
+                "taskview",
+                "task_view",
+                "recent_apps",
+                "recentapps"
+            ).any { hint ->
+                className.contains(hint) ||
+                    sourceId.contains(hint) ||
+                    eventText.contains(hint)
+            }
+
+        return recentsSignature
+    }
+
+    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
+        val eventPackage = event?.packageName?.toString()
+
+        if (
+            !eventPackage.isNullOrBlank() &&
+            eventPackage != SYSTEM_UI_PACKAGE &&
+            eventPackage in launcherPackages
+        ) {
+            return eventPackage
+        }
+
+        val currentApplication = windows.asSequence()
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    !it.isInPictureInPictureMode
+            }
+            .filter { it.isActive || it.isFocused }
+            .sortedByDescending { it.isActive }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull()
+
+        if (!currentApplication.isNullOrBlank()) return currentApplication
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        if (!rootPackage.isNullOrBlank() && rootPackage != SYSTEM_UI_PACKAGE) {
+        val pipPackages = windows
+            .filter { it.isInPictureInPictureMode }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .toSet()
+
+        if (!rootPackage.isNullOrBlank() && rootPackage !in pipPackages) {
             return rootPackage
         }
 
-        return event?.packageName?.toString()
+        return eventPackage?.takeUnless { it in pipPackages }
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
@@ -198,7 +286,7 @@ class PauseAccessibilityService : AccessibilityService() {
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 250L
-        private const val WATCHDOG_INTERVAL_MS = 400L
+        private const val WATCHDOG_INTERVAL_MS = 300L
         private const val UNLOCK_GRACE_MS = 1_000L
     }
 }
