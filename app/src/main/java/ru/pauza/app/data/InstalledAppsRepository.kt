@@ -65,7 +65,9 @@ class InstalledAppsRepository(private val context: Context) {
         } ?: return false
 
         return runCatching {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Keep allowed apps inside Pause's pinned task. Launcher intents
+            // normally carry NEW_TASK, which would escape the pinned task.
+            intent.removeFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             true
         }.getOrDefault(false)
