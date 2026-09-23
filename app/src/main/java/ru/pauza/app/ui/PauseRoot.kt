@@ -44,6 +44,7 @@ import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
 import ru.pauza.app.domain.PauseBlocker
+import ru.pauza.app.domain.UsageAccessMonitor
 import ru.pauza.app.model.InstalledApp
 import ru.pauza.app.ui.theme.PauseGreen
 import ru.pauza.app.ui.theme.PauseGreenSoft
@@ -76,6 +77,9 @@ fun PauseRoot(
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
+    var usageAccessEnabled by remember {
+        mutableStateOf(UsageAccessMonitor.isGranted(context))
+    }
     var firstSetupCompleted by remember {
         mutableStateOf(store.firstSetupCompleted)
     }
@@ -83,8 +87,16 @@ fun PauseRoot(
     LaunchedEffect(Unit) {
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
+            usageAccessEnabled = UsageAccessMonitor.isGranted(context)
             delay(700)
         }
+    }
+
+    if (!usageAccessEnabled) {
+        UsageAccessSetupScreen(
+            onOpenUsageAccess = { UsageAccessMonitor.openSettings(context) }
+        )
+        return
     }
 
     if (!firstSetupCompleted || !accessibilityEnabled) {
@@ -187,6 +199,73 @@ fun PauseRoot(
                 screen = Screen.SETUP
             }
         )
+    }
+}
+
+@Composable
+private fun UsageAccessSetupScreen(
+    onOpenUsageAccess: () -> Unit,
+) {
+    Surface(
+        Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Text(
+                "Разрешите контроль приложений",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Text(
+                "Пауза должна видеть, какое приложение сейчас открыто. " +
+                    "Это нужно, чтобы сразу закрывать всё, чего нет в белом списке.",
+                color = PauseMuted,
+                lineHeight = 22.sp
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "Одноразовая настройка Android",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Откройте «Доступ к статистике использования» и разрешите его для «Паузы». " +
+                            "Компьютер, ADB и сброс телефона не нужны.",
+                        color = PauseMuted,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+
+            Button(
+                onClick = onOpenUsageAccess,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("Открыть доступ к статистике")
+            }
+
+            Text(
+                "После включения вернитесь в «Паузу» — этот экран исчезнет автоматически.",
+                color = PauseMuted,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
     }
 }
 
