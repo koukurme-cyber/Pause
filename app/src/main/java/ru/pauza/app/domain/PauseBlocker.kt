@@ -1,6 +1,7 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -13,15 +14,22 @@ interface PauseBlocker {
 }
 
 class AccessibilityPauseBlocker(private val context: Context) : PauseBlocker {
-    override fun start(allowedPackages: Set<String>, untilEpochMs: Long) = Unit
-    override fun stop() = Unit
+    override fun start(allowedPackages: Set<String>, untilEpochMs: Long) {
+        (context as? Activity)?.let { activity ->
+            runCatching { activity.startLockTask() }
+        }
+    }
+
+    override fun stop() {
+        (context as? Activity)?.let { activity ->
+            runCatching { activity.stopLockTask() }
+        }
+    }
 
     companion object {
         fun isEnabled(context: Context): Boolean {
             val target = ComponentName(context, PauseAccessibilityService::class.java)
 
-            // Most reliable source: Android's own colon-separated list of
-            // accessibility services currently enabled by the user.
             val enabledServices = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -31,12 +39,13 @@ class AccessibilityPauseBlocker(private val context: Context) : PauseBlocker {
                 .split(':')
                 .asSequence()
                 .mapNotNull { ComponentName.unflattenFromString(it) }
-                .any { it.packageName == target.packageName && sameServiceClass(it.className, target.className, target.packageName) }
+                .any {
+                    it.packageName == target.packageName &&
+                        sameServiceClass(it.className, target.className, target.packageName)
+                }
 
             if (enabledInSecureSettings) return true
 
-            // Fallback for OEM implementations that expose the service through
-            // AccessibilityManager even when the secure string is formatted unusually.
             val manager = context.getSystemService(AccessibilityManager::class.java)
             return manager
                 .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
