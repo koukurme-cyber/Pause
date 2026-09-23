@@ -48,6 +48,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var navGuardOverlay: View? = null
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -81,6 +82,7 @@ class PauseAccessibilityService : AccessibilityService() {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
             hideOverlay()
+            hideNavGuard()
             return
         }
 
@@ -91,6 +93,7 @@ class PauseAccessibilityService : AccessibilityService() {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
             hideOverlay()
+            hideNavGuard()
             return
         }
 
@@ -98,16 +101,19 @@ class PauseAccessibilityService : AccessibilityService() {
             wasUnavailableForUnlock = false
             resumeProtectionAt = SystemClock.elapsedRealtime() + UNLOCK_GRACE_MS
             hideOverlay()
+            hideNavGuard()
             return
         }
 
         if (SystemClock.elapsedRealtime() < resumeProtectionAt) {
             hideOverlay()
+            hideNavGuard()
             return
         }
 
         if (isSystemEscapeEvent(event)) {
             hideOverlay()
+            hideNavGuard()
             performGlobalAction(GLOBAL_ACTION_BACK)
             returnToPause(force = true)
             return
@@ -117,6 +123,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
         if (foregroundPackage in launcherPackages) {
             hideOverlay()
+            hideNavGuard()
             returnToPause(force = true)
             return
         }
@@ -127,9 +134,15 @@ class PauseAccessibilityService : AccessibilityService() {
 
         if (foregroundPackage in allowed) {
             hideOverlay()
+            if (foregroundPackage == packageName) {
+                hideNavGuard()
+            } else {
+                showNavGuard()
+            }
             return
         }
 
+        hideNavGuard()
         showOverlay(end)
         returnToPause()
     }
@@ -146,23 +159,20 @@ class PauseAccessibilityService : AccessibilityService() {
         val sourceId = event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
         val eventText = event.text.joinToString(" ").lowercase(Locale.ROOT)
 
-        val recentsSignature =
-            listOf(
-                "recent",
-                "recents",
-                "overview",
-                "quickstep",
-                "taskview",
-                "task_view",
-                "recent_apps",
-                "recentapps"
-            ).any { hint ->
-                className.contains(hint) ||
-                    sourceId.contains(hint) ||
-                    eventText.contains(hint)
-            }
-
-        return recentsSignature
+        return listOf(
+            "recent",
+            "recents",
+            "overview",
+            "quickstep",
+            "taskview",
+            "task_view",
+            "recent_apps",
+            "recentapps"
+        ).any { hint ->
+            className.contains(hint) ||
+                sourceId.contains(hint) ||
+                eventText.contains(hint)
+        }
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -216,6 +226,54 @@ class PauseAccessibilityService : AccessibilityService() {
             }
         )
     }
+
+    private fun showNavGuard() {
+        if (navGuardOverlay != null) return
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isClickable = true
+            isFocusable = false
+            setOnClickListener { returnToPause(force = true) }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            navigationBarHeight(),
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.OPAQUE
+        ).apply {
+            gravity = Gravity.BOTTOM
+        }
+
+        runCatching {
+            getSystemService(WindowManager::class.java).addView(root, params)
+            navGuardOverlay = root
+        }.onFailure {
+            Log.w("PauseProtection", "Navigation guard overlay failed", it)
+        }
+    }
+
+    private fun hideNavGuard() {
+        val current = navGuardOverlay ?: return
+        runCatching {
+            getSystemService(WindowManager::class.java).removeView(current)
+        }
+        navGuardOverlay = null
+    }
+
+    private fun navigationBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val systemHeight =
+            if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+        return max(systemHeight, dp(NAV_GUARD_FALLBACK_DP))
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun showOverlay(sessionEnd: Long) {
         updateOverlayTimer(sessionEnd)
@@ -280,6 +338,7 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
         hideOverlay()
+        hideNavGuard()
         super.onDestroy()
     }
 
@@ -288,6 +347,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 300L
         private const val UNLOCK_GRACE_MS = 1_000L
+        private const val NAV_GUARD_FALLBACK_DP = 48
     }
 }
 
