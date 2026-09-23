@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Пауза</string>
     <string name="accessibility_description">Возвращает на экран Паузы при открытии запрещённых приложений во время активного таймера.</string>
+    <string name="device_admin_label">Пауза — управление устройством</string>
+    <string name="device_admin_description">Системный белый список приложений и блокировка Home/Недавних во время активной Паузы.</string>
 </resources>
