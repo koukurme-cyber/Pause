@@ -124,8 +124,29 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            if (foregroundPackage == store.pendingAllowedLaunchPackage) {
+                store.clearPendingAllowedLaunch()
+            }
             hideOverlay()
             return
+        }
+
+        val pendingLaunchPackage = store.pendingAllowedLaunchPackage
+        val pendingLaunchUntil = store.pendingAllowedLaunchUntilEpochMs
+        val pendingLaunchActive =
+            !pendingLaunchPackage.isNullOrBlank() &&
+                System.currentTimeMillis() <= pendingLaunchUntil
+
+        if (
+            pendingLaunchActive &&
+            foregroundPackage == ANDROID_FRAMEWORK_PACKAGE
+        ) {
+            hideOverlay()
+            return
+        }
+
+        if (!pendingLaunchActive && pendingLaunchPackage != null) {
+            store.clearPendingAllowedLaunch()
         }
 
         showOverlay(end)
@@ -240,6 +261,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private const val ANDROID_FRAMEWORK_PACKAGE = "android"
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
