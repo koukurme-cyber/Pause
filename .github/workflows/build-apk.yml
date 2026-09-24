@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - consumer-strict-0.7.1
+      - consumer-strict-0.7.2
 
 concurrency:
   group: pauza-main-build
@@ -44,8 +44,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 41/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.7.1"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 42/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.7.2"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -56,12 +56,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.7.1.apk
-          test -s Pauza-0.7.1.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.7.2.apk
+          test -s Pauza-0.7.2.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.7.1.apk --clobber
-            gh release edit pauza-latest --title "Пауза 0.7.1" --notes "Consumer strict-mode build. Usage Access is the primary foreground-app detector; Home and Overview are allowed surfaces, while any non-whitelisted app is immediately covered and returned to Pause. Accessibility remains as fallback and overlay host. No ADB, Device Owner or screen pinning."
+            gh release upload pauza-latest Pauza-0.7.2.apk --clobber
+            gh release edit pauza-latest --title "Пауза 0.7.2" --notes "Consumer strict mode with ROLE_HOME. During an active Pause, the Android Home action routes back to Pause. Outside a Pause, the Home gateway forwards to the previously selected launcher. Usage Access blocks non-whitelisted apps; Accessibility remains fallback. No ADB, Device Owner or screen pinning."
           else
-            gh release create pauza-latest Pauza-0.7.1.apk --target "$GITHUB_SHA" --title "Пауза 0.7.1" --notes "Consumer strict-mode build. Usage Access is the primary foreground-app detector; Home and Overview are allowed surfaces, while any non-whitelisted app is immediately covered and returned to Pause. Accessibility remains as fallback and overlay host. No ADB, Device Owner or screen pinning."
+            gh release create pauza-latest Pauza-0.7.2.apk --target "$GITHUB_SHA" --title "Пауза 0.7.2" --notes "Consumer strict mode with ROLE_HOME. During an active Pause, the Android Home action routes back to Pause. Outside a Pause, the Home gateway forwards to the previously selected launcher. Usage Access blocks non-whitelisted apps; Accessibility remains fallback. No ADB, Device Owner or screen pinning."
           fi
