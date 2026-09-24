@@ -220,7 +220,14 @@ fun PauseRoot(
             selected = selected,
             sessionEnd = sessionEnd,
             sessionDurationMs = store.sessionDurationMs,
-            onLaunch = appsRepository::launch,
+            onLaunch = { app ->
+                store.pendingAllowedLaunchPackage = app.packageName
+                store.pendingAllowedLaunchUntilEpochMs =
+                    System.currentTimeMillis() + 4_000L
+                val launched = appsRepository.launch(app)
+                if (!launched) store.clearPendingAllowedLaunch()
+                launched
+            },
             onFinished = {
                 blocker.stop()
                 store.clearSession()
