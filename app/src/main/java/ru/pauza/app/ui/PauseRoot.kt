@@ -544,7 +544,7 @@ private fun SetupChecklistCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(46.dp),
-                    shape = RoundedCornerShape(15.dp),
+                    shape = RoundedCornerShape(13.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFE1F2DE),
                         contentColor = Color(0xFF164E34),
@@ -742,13 +742,13 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(90.dp)
+            .height(66.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(26.dp)
                 .clip(RoundedCornerShape(15.dp))
                 .background(PauseMuted.copy(alpha = 0.09f))
         )
@@ -798,7 +798,7 @@ private fun DurationWheel(
     onValueChange: (Int) -> Unit,
 ) {
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = value.coerceIn(0, max)
+        initialFirstVisibleItemIndex = (value + 1).coerceIn(1, max + 1)
     )
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
@@ -825,11 +825,12 @@ private fun DurationWheel(
             .collect { scrolling ->
                 if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
                     val target = centeredValue.coerceIn(0, max)
+                    val targetTopIndex = (target + 1).coerceIn(1, max + 1)
                     if (
-                        listState.firstVisibleItemIndex != target ||
+                        listState.firstVisibleItemIndex != targetTopIndex ||
                         listState.firstVisibleItemScrollOffset != 0
                     ) {
-                        listState.animateScrollToItem(target)
+                        listState.animateScrollToItem(targetTopIndex)
                     }
                     if (target != latestValue) {
                         latestOnValueChange(target)
@@ -851,7 +852,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(18.dp),
+                    .height(22.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
