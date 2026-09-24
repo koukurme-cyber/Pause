@@ -1,6 +1,8 @@
 package ru.pauza.app
 
 import android.content.Intent
+import android.app.UiAutomation
+import androidx.test.uiautomator.Configurator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -18,7 +20,10 @@ import java.io.File
 class VisualFlowTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
-    private val device = UiDevice.getInstance(instrumentation)
+    private val device = run {
+        Configurator.getInstance().setUiAutomationFlags(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        UiDevice.getInstance(instrumentation)
+    }
     private val store = PauseStore(context)
     private val output = File(context.getExternalFilesDir(null), "verification").apply { mkdirs() }
 
@@ -30,6 +35,7 @@ class VisualFlowTest {
     private fun awaitText(text: String) = requireNotNull(device.wait(Until.findObject(By.text(text)), 10000)) { "Missing: $text" }
     private fun shot(name: String) {
         device.waitForIdle()
+        device.findObject(By.text("Got it"))?.let { it.click(); Thread.sleep(500) }
         assertTrue(device.takeScreenshot(File(output, "$name.png")))
     }
     private fun record(text: String) = File(output, "checks.txt").appendText("PASS: $text\n")
@@ -80,6 +86,7 @@ class VisualFlowTest {
             device.dumpWindowHierarchy(File(output, "visual-failure-hierarchy.xml"))
             throw error
         } finally {
+            File(output, "accessibility-state.txt").writeText(device.executeShellCommand("dumpsys accessibility"))
             device.executeShellCommand("mkdir -p /sdcard/Download/pauza-verification")
             device.executeShellCommand("cp -r ${output.absolutePath}/. /sdcard/Download/pauza-verification/")
             store.clearSession()
@@ -192,6 +199,7 @@ class VisualFlowTest {
             device.dumpWindowHierarchy(File(output, "failure-hierarchy.xml"))
             throw error
         } finally {
+            File(output, "accessibility-state.txt").writeText(device.executeShellCommand("dumpsys accessibility"))
             device.executeShellCommand("mkdir -p /sdcard/Download/pauza-verification")
             device.executeShellCommand("cp -r ${output.absolutePath}/. /sdcard/Download/pauza-verification/")
             store.clearSession()
