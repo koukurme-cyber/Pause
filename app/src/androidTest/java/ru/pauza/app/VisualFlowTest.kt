@@ -32,9 +32,23 @@ class VisualFlowTest {
             Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         device.waitForIdle()
     }
-    private fun awaitText(text: String) = requireNotNull(device.wait(Until.findObject(By.text(text)), 10000)) { "Missing: $text" }
+    private fun dismissEmulatorSystemDialog() {
+        device.findObject(By.text("Wait"))?.let {
+            it.click()
+            Thread.sleep(400)
+            device.waitForIdle()
+        }
+    }
+
+    private fun awaitText(text: String) =
+        device.wait(Until.findObject(By.text(text)), 1500) ?: run {
+            dismissEmulatorSystemDialog()
+            requireNotNull(device.wait(Until.findObject(By.text(text)), 10000)) { "Missing: $text" }
+        }
+
     private fun shot(name: String) {
         device.waitForIdle()
+        dismissEmulatorSystemDialog()
         device.findObject(By.text("Got it"))?.let { it.click(); Thread.sleep(500) }
         assertTrue(device.takeScreenshot(File(output, "$name.png")))
     }
