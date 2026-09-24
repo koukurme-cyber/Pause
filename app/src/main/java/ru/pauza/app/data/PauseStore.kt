@@ -17,6 +17,14 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_FIRST_SETUP_COMPLETED, false)
         set(value) { prefs.edit().putBoolean(KEY_FIRST_SETUP_COMPLETED, value).apply() }
 
+    var restrictedSettingsConfirmed: Boolean
+        get() = prefs.getBoolean(KEY_RESTRICTED_SETTINGS_CONFIRMED, false)
+        set(value) { prefs.edit().putBoolean(KEY_RESTRICTED_SETTINGS_CONFIRMED, value).apply() }
+
+    var setupChecklistCompleted: Boolean
+        get() = prefs.getBoolean(KEY_SETUP_CHECKLIST_COMPLETED, false)
+        set(value) { prefs.edit().putBoolean(KEY_SETUP_CHECKLIST_COMPLETED, value).apply() }
+
     fun clearSession() {
         prefs.edit().remove(KEY_SESSION_END).apply()
     }
@@ -25,5 +33,7 @@ class PauseStore(context: Context) {
         private const val KEY_SELECTED = "selected_packages"
         private const val KEY_SESSION_END = "session_end_epoch_ms"
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
+        private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
+        private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
     }
 }
