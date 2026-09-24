@@ -578,10 +578,10 @@ private fun SetupScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 12.dp)
+                .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
             BrandHeader(compact = true)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Выберите длительность и доступные приложения.",
                 color = PauseMuted,
@@ -589,7 +589,7 @@ private fun SetupScreen(
                 lineHeight = 18.sp
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
@@ -597,7 +597,7 @@ private fun SetupScreen(
                 border = BorderStroke(1.dp, Color(0xFFE1E3DC))
             ) {
                 Column(
-                    Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                    Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
                         "Длительность паузы",
@@ -605,7 +605,7 @@ private fun SetupScreen(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(3.dp))
                     DurationPicker(
                         duration = duration,
                         onChange = onDuration
@@ -613,21 +613,21 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(6.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
                     "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
                 )
             }
 
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -651,7 +651,7 @@ private fun SetupScreen(
             )
 
             Row(
-                Modifier.fillMaxWidth().height(34.dp),
+                Modifier.fillMaxWidth().height(28.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -733,13 +733,13 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp)
+            .height(90.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(26.dp)
                 .clip(RoundedCornerShape(13.dp))
                 .background(PauseMuted.copy(alpha = 0.09f))
         )
@@ -842,7 +842,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(22.dp),
+                    .height(18.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
@@ -912,42 +912,43 @@ private fun ReviewScreen(
                 .padding(18.dp)
         ) {
             BrandHeader(compact = true)
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(10.dp))
             Text(
                 "Проверьте перед запуском",
-                fontSize = 28.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 "После запуска список приложений изменить нельзя до окончания таймера.",
                 color = PauseMuted,
-                lineHeight = 21.sp
+                lineHeight = 19.sp
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
                 shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         "Точно всё нужное оставили?",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp
+                        fontSize = 16.sp
                     )
                     Text(
                         "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
                         color = PauseMuted,
-                        lineHeight = 20.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
             Card(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
