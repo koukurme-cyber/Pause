@@ -6,14 +6,14 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val PauseGreen = Color(0xFF1E4B3A)
-val PauseGreenSoft = Color(0xFFEAF0E7)
-val PauseBackground = Color(0xFFF7F8F4)
-val PauseSurface = Color(0xFFFFFFFF)
-val PauseText = Color(0xFF1E2420)
-val PauseMuted = Color(0xFF6D746F)
-val PauseLine = Color(0xFFE1E5DF)
-val PauseWarning = Color(0xFFF3EFE4)
+val PauseGreen = Color(0xFF184B34)
+val PauseGreenSoft = Color(0xFFE7F2E3)
+val PauseBackground = Color(0xFFF8F6EF)
+val PauseSurface = Color(0xFFFFFEFA)
+val PauseText = Color(0xFF171B18)
+val PauseMuted = Color(0xFF6C736E)
+val PauseLine = Color(0xFFE1E3DC)
+val PauseWarning = Color(0xFFFFF3D7)
 
 private val PauseColors = lightColorScheme(
     primary = PauseGreen,
@@ -24,6 +24,8 @@ private val PauseColors = lightColorScheme(
     onBackground = PauseText,
     surface = PauseSurface,
     onSurface = PauseText,
+    surfaceVariant = Color(0xFFF2F2ED),
+    onSurfaceVariant = PauseMuted,
     outline = PauseLine,
 )
 
