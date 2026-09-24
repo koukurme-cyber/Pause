@@ -9,10 +9,11 @@ android {
 
     defaultConfig {
         applicationId = "ru.pauza.app"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.6.3"
+        versionCode = 53
+        versionName = "0.8.3"
     }
 
     signingConfigs {
@@ -56,5 +57,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

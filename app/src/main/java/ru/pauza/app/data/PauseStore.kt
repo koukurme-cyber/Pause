@@ -13,6 +13,11 @@ class PauseStore(context: Context) {
         get() = prefs.getLong(KEY_SESSION_END, 0L)
         set(value) { prefs.edit().putLong(KEY_SESSION_END, value).apply() }
 
+    // Visual progress metadata only; blocking and expiry still use sessionEndEpochMs.
+    var sessionDurationMs: Long
+        get() = prefs.getLong("session_duration_ms", 0L)
+        set(value) { prefs.edit().putLong("session_duration_ms", value).apply() }
+
     var firstSetupCompleted: Boolean
         get() = prefs.getBoolean(KEY_FIRST_SETUP_COMPLETED, false)
         set(value) { prefs.edit().putBoolean(KEY_FIRST_SETUP_COMPLETED, value).apply() }
@@ -26,7 +31,7 @@ class PauseStore(context: Context) {
         set(value) { prefs.edit().putBoolean(KEY_SETUP_CHECKLIST_COMPLETED, value).apply() }
 
     fun clearSession() {
-        prefs.edit().remove(KEY_SESSION_END).apply()
+        prefs.edit().remove(KEY_SESSION_END).remove("session_duration_ms").apply()
     }
 
     companion object {

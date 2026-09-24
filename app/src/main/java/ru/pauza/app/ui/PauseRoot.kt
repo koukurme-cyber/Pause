@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -202,6 +204,7 @@ fun PauseRoot(
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
+                store.sessionDurationMs = duration.totalMinutes * 60_000L
                 blocker.start(
                     selected + appsRepository.alwaysAllowedPackages(),
                     sessionEnd
@@ -215,6 +218,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
+            sessionDurationMs = store.sessionDurationMs,
             onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
@@ -269,20 +273,15 @@ private fun BrandHeader(
 private fun SoftScreenBackground(
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFBF9F3),
-                        Color(0xFFF4F5EC),
-                        Color(0xFFF8F6EF),
-                    )
-                )
-            ),
-        content = content
-    )
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.pauza_ui_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+        content()
+    }
 }
 
 @Composable
@@ -451,10 +450,10 @@ private fun SetupChecklistCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(24.dp), ambientColor = Color.Black.copy(alpha = .06f)),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA)),
+            ,
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, outline)
+        border = BorderStroke(1.dp, outline.copy(alpha = .25f))
     ) {
         Column(
             Modifier.padding(16.dp),
@@ -488,15 +487,14 @@ private fun SetupChecklistCard(
                 Spacer(Modifier.width(13.dp))
 
                 Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
                         Text(
                             title,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp,
-                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (optional) {
-                            Spacer(Modifier.width(7.dp))
+                            Spacer(Modifier.height(5.dp))
                             Surface(
                                 color = Color(0xFFFFE8A8),
                                 shape = RoundedCornerShape(99.dp)
@@ -593,7 +591,7 @@ private fun SetupScreen(
             Spacer(Modifier.height(12.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, Color(0xFFE1E3DC))
             ) {
@@ -672,9 +670,9 @@ private fun SetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
                 shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFE4E5DF))
+                border = BorderStroke(0.dp, Color.Transparent)
             ) {
                 when {
                     loading -> Box(
@@ -734,7 +732,7 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(116.dp)
+            .height(110.dp)
     ) {
         Box(
             modifier = Modifier
@@ -843,7 +841,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(28.dp),
+                    .height(22.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
@@ -950,12 +948,12 @@ private fun ReviewScreen(
 
             Spacer(Modifier.height(14.dp))
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA)),
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
                 shape = RoundedCornerShape(22.dp),
                 border = BorderStroke(1.dp, Color(0xFFE2E4DD))
             ) {
-                Column(Modifier.padding(15.dp)) {
+                Column(Modifier.fillMaxSize().padding(15.dp)) {
                     Text(
                         "Пауза: " + formatDuration(duration),
                         fontSize = 18.sp,
@@ -975,7 +973,7 @@ private fun ReviewScreen(
                         columns = GridCells.Fixed(4),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f, fill = false),
+                            .weight(1f),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                         contentPadding = PaddingValues(bottom = 8.dp)
@@ -990,7 +988,7 @@ private fun ReviewScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(14.dp))
             HoldButton(onConfirmed = onStart)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -1011,6 +1009,7 @@ private fun ActiveScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     sessionEnd: Long,
+    sessionDurationMs: Long,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
     onTapExit: () -> Unit,
@@ -1039,98 +1038,100 @@ private fun ActiveScreen(
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
+    // Older sessions have no duration metadata; anchor once and retain through rotation.
+    val totalDuration = rememberSaveable(sessionEnd) {
+        sessionDurationMs.takeIf { it > 0L } ?: remaining.coerceAtLeast(1L)
+    }
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.pauza_active_concept_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+        BoxWithConstraints(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                .padding(horizontal = 24.dp)
         ) {
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "Пауза",
-                fontSize = 31.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "Доступны только выбранные приложения",
-                color = PauseMuted,
-                fontSize = 14.sp
-            )
-
-            Spacer(Modifier.height(22.dp))
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                val tapAt = SystemClock.elapsedRealtime()
-                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                                lastTapAt = tapAt
-                                tapCount += 1
-                                if (tapCount >= 7) {
-                                    tapCount = 0
-                                    onTapExit()
-                                }
-                            }
-                        )
-                    },
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFFEFA)
-                ),
-                shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E5DD))
+            val dialSize = minOf(maxWidth - 16.dp, maxHeight * .43f)
+            Column(
+                Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "Осталось",
-                        color = PauseMuted,
-                        fontSize = 14.sp
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = formatRemainingForLauncher(remaining),
-                        color = Color(0xFF152219),
-                        fontSize = if (remaining >= 24L * 60L * 60L * 1000L) 34.sp else 43.sp,
-                        lineHeight = 48.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
+                Spacer(Modifier.height(24.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF39B640)))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Пауза", fontSize = 20.sp, fontWeight = FontWeight.Medium)
                 }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp)
-            ) {
-                items(
-                    items = shortcuts,
-                    key = { it.launchType.name + ":" + it.packageName }
-                ) { app ->
-                    LauncherAppIcon(
-                        app = app,
-                        onClick = { onLaunch(app) }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Доступны только выбранные приложения",
+                    color = Color(0xFF495348), fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                Box(
+                    Modifier.size(dialSize).pointerInput(Unit) {
+                        detectTapGestures(onTap = {
+                            val tapAt = SystemClock.elapsedRealtime()
+                            if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                            lastTapAt = tapAt
+                            tapCount += 1
+                            if (tapCount >= 7) {
+                                tapCount = 0
+                                onTapExit()
+                            }
+                        })
+                    },
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = { (remaining.toFloat() / totalDuration).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color(0xFF54B848),
+                        trackColor = Color(0xFF9EC590).copy(alpha = .40f),
+                        strokeWidth = 16.dp,
+                        strokeCap = StrokeCap.Round
                     )
+                    Column(
+                        Modifier.padding(26.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_pauza_leaf),
+                            contentDescription = null,
+                            modifier = Modifier.size(38.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = formatRemainingForLauncher(remaining),
+                            color = Color(0xFF101610),
+                            fontSize = when {
+                                remaining >= 86_400_000L -> (dialSize.value * .081f).sp
+                                remaining >= 3_600_000L -> (dialSize.value * .14f).sp
+                                else -> (dialSize.value * .21f).sp
+                            },
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text("Осталось", color = Color(0xFF50584E), fontSize = 16.sp)
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(22.dp),
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp)
+                ) {
+                    items(
+                        items = shortcuts,
+                        key = { it.launchType.name + ":" + it.packageName }
+                    ) { app ->
+                        LauncherAppIcon(app = app, onClick = { onLaunch(app) })
+                    }
                 }
             }
         }
@@ -1392,8 +1393,10 @@ private fun formatRemainingForLauncher(ms: Long): String {
 
     return if (days > 0) {
         String.format(Locale.US, "%d дн %02d:%02d:%02d", days, hours, minutes, seconds)
-    } else {
+    } else if (hours > 0) {
         String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
 
