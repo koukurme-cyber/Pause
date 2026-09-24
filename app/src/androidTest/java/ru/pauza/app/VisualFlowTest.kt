@@ -82,6 +82,7 @@ class VisualFlowTest {
             assertEquals(0L, store.sessionEndEpochMs)
             record("Independent visual flow: actual timer expiry returns to setup")
         } catch (error: Throwable) {
+            File(output, "visual-failure-error.txt").writeText(error.stackTraceToString())
             shot("visual-failure-screen")
             device.dumpWindowHierarchy(File(output, "visual-failure-hierarchy.xml"))
             throw error
@@ -195,6 +196,7 @@ class VisualFlowTest {
             assertEquals(0L, store.sessionEndEpochMs)
             record("Real timer expiry clears session and restores setup")
         } catch (error: Throwable) {
+            File(output, "failure-error.txt").writeText(error.stackTraceToString())
             shot("failure-screen")
             device.dumpWindowHierarchy(File(output, "failure-hierarchy.xml"))
             throw error
