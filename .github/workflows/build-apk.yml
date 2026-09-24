@@ -1,8 +1,8 @@
-name: Build and verify Pauza 0.8.5
+name: Build and verify Pauza 0.8.6
 on:
   workflow_dispatch:
   push:
-    branches: [visual-concept-assets-0.8.5]
+    branches: [visual-concept-assets-0.8.6]
 concurrency:
   group: pauza-visual-${{ github.ref }}
   cancel-in-progress: true
@@ -49,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pauza-0.8.5-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pauza-0.8.6-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: verification/
           if-no-files-found: warn
 
@@ -59,13 +59,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -s app/build/outputs/apk/release/app-release.apk || exit 1
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.5.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.6.apk
           mkdir -p verification
           cp -r app/build/reports/androidTests verification/test-reports 2>/dev/null || true
           printf 'Commit: %s\nEmulator step: %s\n' "$GITHUB_SHA" '${{ steps.verify.outcome }}' > verification/build.txt
-          zip -r Pauza-0.8.5-verification.zip verification
+          zip -r Pauza-0.8.6-verification.zip verification
           tag="pauza-visual-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" Pauza-0.8.5.apk Pauza-0.8.5-verification.zip --target "$GITHUB_SHA" --prerelease --title 'Пауза 0.8.5 — визуальная проверка' --notes 'Separate visual branch. See verification archive for actual emulator results. Physical device checks remain required.'
+          gh release create "$tag" Pauza-0.8.6.apk Pauza-0.8.6-verification.zip --target "$GITHUB_SHA" --prerelease --title 'Пауза 0.8.6 — визуальная проверка' --notes 'Separate visual branch. See verification archive for actual emulator results. Physical device checks remain required.'
       - name: Require successful emulator checks
         if: steps.verify.outcome != 'success'
         run: exit 1
