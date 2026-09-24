@@ -54,6 +54,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var overlayTimer: TextView? = null
     private var shuttingDown = false
     private var shutdownReceiverRegistered = false
+    private var systemUiGraceUntil = 0L
 
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -139,6 +140,18 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        val elapsedNow = SystemClock.elapsedRealtime()
+        if (isSystemUiSurfaceVisible(event)) {
+            systemUiGraceUntil = elapsedNow + SYSTEM_UI_GRACE_MS
+            hideOverlay()
+            return
+        }
+
+        if (elapsedNow < systemUiGraceUntil) {
+            hideOverlay()
+            return
+        }
+
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
         // System UI itself is allowed, but a launcher is not: pressing Home may
@@ -205,6 +218,24 @@ class PauseAccessibilityService : AccessibilityService() {
 
         showOverlay(end)
         returnToPause()
+    }
+
+    private fun isSystemUiSurfaceVisible(event: AccessibilityEvent?): Boolean {
+        val eventPackage = event?.packageName?.toString()
+        if (eventPackage == SYSTEM_UI_PACKAGE) return true
+
+        val activeSystemWindow = windows.asSequence()
+            .filter { it.isActive || it.isFocused }
+            .mapNotNull { window ->
+                val pkg = window.root?.packageName?.toString()
+                if (pkg == SYSTEM_UI_PACKAGE) pkg else null
+            }
+            .firstOrNull()
+
+        if (activeSystemWindow != null) return true
+
+        val rootPackage = rootInActiveWindow?.packageName?.toString()
+        return rootPackage == SYSTEM_UI_PACKAGE
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -325,6 +356,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
+        private const val SYSTEM_UI_GRACE_MS = 2_500L
     }
 }
 
