@@ -30,8 +30,33 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_SETUP_CHECKLIST_COMPLETED, false)
         set(value) { prefs.edit().putBoolean(KEY_SETUP_CHECKLIST_COMPLETED, value).apply() }
 
+    var pendingAllowedLaunchPackage: String?
+        get() = prefs.getString(KEY_PENDING_ALLOWED_LAUNCH_PACKAGE, null)
+        set(value) {
+            val edit = prefs.edit()
+            if (value == null) edit.remove(KEY_PENDING_ALLOWED_LAUNCH_PACKAGE)
+            else edit.putString(KEY_PENDING_ALLOWED_LAUNCH_PACKAGE, value)
+            edit.apply()
+        }
+
+    var pendingAllowedLaunchUntilEpochMs: Long
+        get() = prefs.getLong(KEY_PENDING_ALLOWED_LAUNCH_UNTIL, 0L)
+        set(value) { prefs.edit().putLong(KEY_PENDING_ALLOWED_LAUNCH_UNTIL, value).apply() }
+
+    fun clearPendingAllowedLaunch() {
+        prefs.edit()
+            .remove(KEY_PENDING_ALLOWED_LAUNCH_PACKAGE)
+            .remove(KEY_PENDING_ALLOWED_LAUNCH_UNTIL)
+            .apply()
+    }
+
     fun clearSession() {
-        prefs.edit().remove(KEY_SESSION_END).remove("session_duration_ms").apply()
+        prefs.edit()
+            .remove(KEY_SESSION_END)
+            .remove("session_duration_ms")
+            .remove(KEY_PENDING_ALLOWED_LAUNCH_PACKAGE)
+            .remove(KEY_PENDING_ALLOWED_LAUNCH_UNTIL)
+            .apply()
     }
 
     companion object {
@@ -40,5 +65,7 @@ class PauseStore(context: Context) {
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
+        private const val KEY_PENDING_ALLOWED_LAUNCH_PACKAGE = "pending_allowed_launch_package"
+        private const val KEY_PENDING_ALLOWED_LAUNCH_UNTIL = "pending_allowed_launch_until_epoch_ms"
     }
 }
