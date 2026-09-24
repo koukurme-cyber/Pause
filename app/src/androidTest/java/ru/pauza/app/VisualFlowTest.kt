@@ -78,7 +78,7 @@ class VisualFlowTest {
             device.waitForIdle()
             device.pressBack()
             Thread.sleep(500)
-            val appRow = awaitText(chosen.label).visibleBounds
+            val appRow = device.findObjects(By.text(chosen.label)).maxBy { it.visibleBounds.centerY() }.visibleBounds
             device.click((device.displayWidth * .85f).toInt(), appRow.centerY())
             Thread.sleep(300)
             assertTrue(store.selectedPackages.contains(chosen.packageName))
