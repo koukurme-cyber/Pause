@@ -75,7 +75,11 @@ class VisualFlowTest {
             val search = requireNotNull(device.findObject(By.clazz("android.widget.EditText")))
             search.text = chosen.label
             device.waitForIdle()
-            requireNotNull(device.findObject(By.clazz("android.widget.Switch")) ?: device.findObject(By.checkable(true))).click()
+            device.pressBack()
+            Thread.sleep(500)
+            val appRow = awaitText(chosen.label).visibleBounds
+            device.click((device.displayWidth * .85f).toInt(), appRow.centerY())
+            Thread.sleep(300)
             assertTrue(store.selectedPackages.contains(chosen.packageName))
             record("Search and selection update actual persisted whitelist")
             store.selectedPackages = candidates.map { it.packageName }.toSet()
@@ -136,7 +140,13 @@ class VisualFlowTest {
             awaitText("Продолжить")
             assertEquals(0L, store.sessionEndEpochMs)
             record("Real timer expiry clears session and restores setup")
+        } catch (error: Throwable) {
+            shot("failure-screen")
+            device.dumpWindowHierarchy(File(output, "failure-hierarchy.xml"))
+            throw error
         } finally {
+            device.executeShellCommand("mkdir -p /sdcard/Download/pauza-verification")
+            device.executeShellCommand("cp -r ${output.absolutePath}/. /sdcard/Download/pauza-verification/")
             store.clearSession()
         }
     }

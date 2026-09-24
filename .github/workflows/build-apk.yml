@@ -25,6 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
+          cache-read-only: false
       - name: Build APK and instrumentation
         run: gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
       - name: Enable emulator acceleration
@@ -43,10 +44,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            gradle --no-daemon :app:connectedDebugAndroidTest --stacktrace; result=$?
-            mkdir -p verification
-            adb pull /sdcard/Android/data/ru.pauza.app/files/verification/. verification/ || true
-            exit $result
+            gradle --no-daemon :app:connectedDebugAndroidTest --stacktrace; result=$?; mkdir -p verification; adb pull /sdcard/Download/pauza-verification/. verification/ || true; exit $result
       - name: Package review build
         if: always()
         env:
