@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - visual-redesign-0.8.1
+      - visual-redesign-0.8.2
 
 concurrency:
   group: pauza-main-build
@@ -44,8 +44,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 51/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.1"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 52/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.2"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -56,12 +56,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.1.apk
-          test -s Pauza-0.8.1.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.2.apk
+          test -s Pauza-0.8.2.apk
 
           if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.8.1.apk --clobber
-            gh release edit pauza-latest --title "Пауза 0.8.1" --notes "Visual redesign with stable 0.7.4 Pause launch behavior retained. Active-screen raster background is failure-safe with a gradient fallback, and duration selection is now compact. No new functions or visible exit controls."
+            gh release upload pauza-latest Pauza-0.8.2.apk --clobber
+            gh release edit pauza-latest --title "Пауза 0.8.2" --notes "Visual correction: the original three-wheel duration selector is restored and only compressed vertically. The active Pause screen is now a clean product UI with no landscape artwork or decorative reconstruction. All 0.7.4 behavior is retained."
           else
-            gh release create pauza-latest Pauza-0.8.1.apk --target "$GITHUB_SHA" --title "Пауза 0.8.1" --notes "Visual redesign with stable 0.7.4 Pause launch behavior retained. Active-screen raster background is failure-safe with a gradient fallback, and duration selection is now compact. No new functions or visible exit controls."
+            gh release create pauza-latest Pauza-0.8.2.apk --target "$GITHUB_SHA" --title "Пауза 0.8.2" --notes "Visual correction: the original three-wheel duration selector is restored and only compressed vertically. The active Pause screen is now a clean product UI with no landscape artwork or decorative reconstruction. All 0.7.4 behavior is retained."
           fi
