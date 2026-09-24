@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -746,8 +748,8 @@ private fun DurationPicker(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(26.dp)
-                .clip(RoundedCornerShape(13.dp))
+                .height(30.dp)
+                .clip(RoundedCornerShape(15.dp))
                 .background(PauseMuted.copy(alpha = 0.09f))
         )
 
@@ -849,7 +851,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(21.dp),
+                    .height(18.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
@@ -860,7 +862,7 @@ private fun DurationWheel(
                         else -> 0.16f
                     }
                     val fontSize = when (distance) {
-                        0 -> 17.sp
+                        0 -> 16.sp
                         1 -> 12.sp
                         else -> 9.sp
                     }
@@ -878,10 +880,15 @@ private fun DurationWheel(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         lineHeight = when (distance) {
-                            0 -> 18.sp
-                            1 -> 13.sp
-                            else -> 10.sp
-                        }
+                            0 -> 16.sp
+                            1 -> 12.sp
+                            else -> 9.sp
+                        },
+                        style = TextStyle(
+                            platformStyle = PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        )
                     )
                 }
             }
