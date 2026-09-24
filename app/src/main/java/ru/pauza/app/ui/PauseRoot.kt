@@ -1038,10 +1038,6 @@ private fun ActiveScreen(
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
-    // Older sessions have no duration metadata; anchor once and retain through rotation.
-    val totalDuration = rememberSaveable(sessionEnd) {
-        sessionDurationMs.takeIf { it > 0L } ?: remaining.coerceAtLeast(1L)
-    }
     Box(Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.pauza_active_concept_bg),
@@ -1049,89 +1045,142 @@ private fun ActiveScreen(
             contentScale = ContentScale.Crop,
             modifier = Modifier.matchParentSize()
         )
-        BoxWithConstraints(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-                .padding(horizontal = 24.dp)
+
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Color(0xFFFBF7EA).copy(alpha = .10f))
+        )
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val dialSize = minOf(maxWidth - 16.dp, maxHeight * .43f)
-            Column(
-                Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Spacer(Modifier.height(24.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF39B640)))
-                    Spacer(Modifier.width(10.dp))
-                    Text("Пауза", fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                }
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    "Доступны только выбранные приложения",
-                    color = Color(0xFF495348), fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(22.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(dialSize).pointerInput(Unit) {
-                        detectTapGestures(onTap = {
-                            val tapAt = SystemClock.elapsedRealtime()
-                            if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                            lastTapAt = tapAt
-                            tapCount += 1
-                            if (tapCount >= 7) {
-                                tapCount = 0
-                                onTapExit()
+                    Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF3DB94A))
+                )
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    "Пауза",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF172119)
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Доступны только выбранные приложения",
+                color = Color(0xFF596359),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                val tapAt = SystemClock.elapsedRealtime()
+                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                                lastTapAt = tapAt
+                                tapCount += 1
+                                if (tapCount >= 7) {
+                                    tapCount = 0
+                                    onTapExit()
+                                }
                             }
-                        })
+                        )
                     },
-                    contentAlignment = Alignment.Center
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
+                ),
+                shape = RoundedCornerShape(30.dp),
+                border = BorderStroke(
+                    1.dp,
+                    Color.White.copy(alpha = .74f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(
-                        progress = { (remaining.toFloat() / totalDuration).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFF54B848),
-                        trackColor = Color(0xFF9EC590).copy(alpha = .40f),
-                        strokeWidth = 16.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-                    Column(
-                        Modifier.padding(26.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Box(
+                        Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFFE7F3E2).copy(alpha = .94f)),
+                        contentAlignment = Alignment.Center
                     ) {
                         Image(
                             painter = painterResource(R.drawable.ic_pauza_leaf),
                             contentDescription = null,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(30.dp)
                         )
-                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    Spacer(Modifier.width(17.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            "Осталось",
+                            color = Color(0xFF667067),
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             text = formatRemainingForLauncher(remaining),
-                            color = Color(0xFF101610),
+                            color = Color(0xFF111713),
                             fontSize = when {
-                                remaining >= 86_400_000L -> (dialSize.value * .081f).sp
-                                remaining >= 3_600_000L -> (dialSize.value * .14f).sp
-                                else -> (dialSize.value * .21f).sp
+                                remaining >= 86_400_000L -> 31.sp
+                                remaining >= 3_600_000L -> 38.sp
+                                else -> 42.sp
                             },
+                            lineHeight = 44.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
-                        Text("Осталось", color = Color(0xFF50584E), fontSize = 16.sp)
                     }
                 }
-                Spacer(Modifier.height(28.dp))
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(22.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp)
-                ) {
-                    items(
-                        items = shortcuts,
-                        key = { it.launchType.name + ":" + it.packageName }
-                    ) { app ->
-                        LauncherAppIcon(app = app, onClick = { onLaunch(app) })
-                    }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp)
+            ) {
+                items(
+                    items = shortcuts,
+                    key = { it.launchType.name + ":" + it.packageName }
+                ) { app ->
+                    LauncherAppIcon(
+                        app = app,
+                        onClick = { onLaunch(app) },
+                        compact = true
+                    )
                 }
             }
         }
@@ -1142,9 +1191,16 @@ private fun ActiveScreen(
 private fun LauncherAppIcon(
     app: InstalledApp,
     onClick: (() -> Unit)? = null,
+    compact: Boolean = false,
 ) {
     val interactionModifier =
         if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
+    val tileSize = if (compact) 58.dp else 66.dp
+    val iconSize = if (compact) 48.dp else 54.dp
+    val radius = if (compact) 18.dp else 20.dp
+    val labelSize = if (compact) 11.sp else 12.sp
+    val labelLineHeight = if (compact) 13.sp else 14.sp
 
     Column(
         modifier = Modifier
@@ -1154,9 +1210,13 @@ private fun LauncherAppIcon(
     ) {
         Box(
             Modifier
-                .size(66.dp)
-                .shadow(7.dp, RoundedCornerShape(20.dp), ambientColor = Color.Black.copy(alpha = .08f))
-                .clip(RoundedCornerShape(20.dp))
+                .size(tileSize)
+                .shadow(
+                    if (compact) 5.dp else 7.dp,
+                    RoundedCornerShape(radius),
+                    ambientColor = Color.Black.copy(alpha = .08f)
+                )
+                .clip(RoundedCornerShape(radius))
                 .background(Color(0xFFFFFEFA).copy(alpha = .90f)),
             contentAlignment = Alignment.Center
         ) {
@@ -1165,13 +1225,13 @@ private fun LauncherAppIcon(
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = app.label,
-                    modifier = Modifier.size(54.dp)
+                    modifier = Modifier.size(iconSize)
                 )
             } else {
                 Box(
                     Modifier
-                        .size(54.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .size(iconSize)
+                        .clip(RoundedCornerShape(if (compact) 15.dp else 16.dp))
                         .background(PauseGreenSoft),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1179,17 +1239,17 @@ private fun LauncherAppIcon(
                         app.label.take(1).uppercase(Locale.getDefault()),
                         color = PauseGreen,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp
+                        fontSize = if (compact) 19.sp else 22.sp
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(if (compact) 6.dp else 7.dp))
         Text(
             text = app.label,
-            fontSize = 12.sp,
-            lineHeight = 14.sp,
+            fontSize = labelSize,
+            lineHeight = labelLineHeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
