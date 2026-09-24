@@ -15,7 +15,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -25,8 +24,6 @@ import android.widget.TextView
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
-import java.util.Locale
-import kotlin.math.max
 
 class PauseAccessibilityService : AccessibilityService() {
     private val store by lazy { PauseStore(this) }
@@ -51,7 +48,6 @@ class PauseAccessibilityService : AccessibilityService() {
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
-    private var overlayTimer: TextView? = null
     private var shuttingDown = false
     private var shutdownReceiverRegistered = false
     private var systemUiGraceUntil = 0L
@@ -141,7 +137,7 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val elapsedNow = SystemClock.elapsedRealtime()
-        if (isSystemUiSurfaceVisible(event)) {
+        if (isSystemTransitionSurfaceVisible(event)) {
             systemUiGraceUntil = elapsedNow + SYSTEM_UI_GRACE_MS
             hideOverlay()
             return
@@ -220,22 +216,29 @@ class PauseAccessibilityService : AccessibilityService() {
         returnToPause()
     }
 
-    private fun isSystemUiSurfaceVisible(event: AccessibilityEvent?): Boolean {
+    private fun isSystemTransitionSurfaceVisible(event: AccessibilityEvent?): Boolean {
         val eventPackage = event?.packageName?.toString()
-        if (eventPackage == SYSTEM_UI_PACKAGE) return true
+        if (
+            eventPackage == SYSTEM_UI_PACKAGE ||
+            eventPackage == ANDROID_FRAMEWORK_PACKAGE
+        ) {
+            return true
+        }
 
         val activeSystemWindow = windows.asSequence()
             .filter { it.isActive || it.isFocused }
-            .mapNotNull { window ->
+            .any { window ->
                 val pkg = window.root?.packageName?.toString()
-                if (pkg == SYSTEM_UI_PACKAGE) pkg else null
+                window.type == AccessibilityWindowInfo.TYPE_SYSTEM ||
+                    pkg == SYSTEM_UI_PACKAGE ||
+                    pkg == ANDROID_FRAMEWORK_PACKAGE
             }
-            .firstOrNull()
 
-        if (activeSystemWindow != null) return true
+        if (activeSystemWindow) return true
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        return rootPackage == SYSTEM_UI_PACKAGE
+        return rootPackage == SYSTEM_UI_PACKAGE ||
+            rootPackage == ANDROID_FRAMEWORK_PACKAGE
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -279,7 +282,6 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun showOverlay(sessionEnd: Long) {
-        updateOverlayTimer(sessionEnd)
         if (overlay != null) return
 
         val root = FrameLayout(this).apply {
@@ -289,18 +291,21 @@ class PauseAccessibilityService : AccessibilityService() {
             setOnClickListener { returnToPause() }
         }
 
-        val timer = TextView(this).apply {
+        // Deliberately static. The real countdown lives only on ActiveScreen.
+        // A second independently-updated timer in an accessibility overlay can
+        // flash during OEM power/global-actions transitions.
+        val label = TextView(this).apply {
+            text = "Пауза"
             setTextColor(Color.rgb(30, 36, 32))
-            textSize = 52f
-            gravity = Gravity.CENTER
+            textSize = 28f
+            gravity = android.view.Gravity.CENTER
             typeface = android.graphics.Typeface.create(
                 android.graphics.Typeface.DEFAULT,
-                android.graphics.Typeface.NORMAL
+                android.graphics.Typeface.BOLD
             )
         }
-        overlayTimer = timer
         root.addView(
-            timer,
+            label,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -319,13 +324,7 @@ class PauseAccessibilityService : AccessibilityService() {
         runCatching {
             getSystemService(WindowManager::class.java).addView(root, params)
             overlay = root
-            updateOverlayTimer(sessionEnd)
         }
-    }
-
-    private fun updateOverlayTimer(sessionEnd: Long) {
-        overlayTimer?.text =
-            formatRemainingForOverlay(max(0L, sessionEnd - System.currentTimeMillis()))
     }
 
     private fun hideOverlay() {
@@ -334,7 +333,6 @@ class PauseAccessibilityService : AccessibilityService() {
             getSystemService(WindowManager::class.java).removeView(current)
         }
         overlay = null
-        overlayTimer = null
     }
 
     override fun onInterrupt() = Unit
@@ -356,22 +354,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
-        private const val SYSTEM_UI_GRACE_MS = 2_500L
+        private const val SYSTEM_UI_GRACE_MS = 750L
     }
 }
 
-private fun formatRemainingForOverlay(ms: Long): String {
-    val total = ms / 1000
-    val days = total / 86_400
-    val hours = (total % 86_400) / 3600
-    val minutes = (total % 3600) / 60
-    val seconds = total % 60
-
-    return if (days > 0) {
-        String.format(Locale.US, "%d дн %02d:%02d:%02d", days, hours, minutes, seconds)
-    } else if (hours > 0) {
-        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.US, "%02d:%02d", minutes, seconds)
-    }
-}
