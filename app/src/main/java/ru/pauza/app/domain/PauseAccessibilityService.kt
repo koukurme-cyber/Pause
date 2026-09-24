@@ -108,12 +108,12 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
-        // Home and Android's own navigation surfaces are harmless. The user may
-        // see them; enforcement starts when an actual application is resumed.
+        // System UI itself is allowed, but a launcher is not: pressing Home may
+        // briefly show the normal desktop, then Usage Access detects that launcher
+        // as foreground and returns the user to the active Pause.
         if (
             foregroundPackage == packageName ||
-            foregroundPackage == SYSTEM_UI_PACKAGE ||
-            foregroundPackage in launcherPackages
+            foregroundPackage == SYSTEM_UI_PACKAGE
         ) {
             hideOverlay()
             return
