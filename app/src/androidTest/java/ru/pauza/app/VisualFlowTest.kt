@@ -56,7 +56,7 @@ class VisualFlowTest {
     private fun active() { awaitText("Осталось") }
     private fun exitTaps() {
         val bounds = awaitText("Осталось").visibleBounds
-        repeat(20) { device.click(bounds.centerX(), bounds.centerY()); Thread.sleep(90) }
+        repeat(20) { device.click(bounds.centerX(), bounds.centerY()); Thread.sleep(180) }
         awaitText("Продолжить")
     }
 
@@ -139,7 +139,8 @@ class VisualFlowTest {
             val repository = InstalledAppsRepository(context)
             val candidates = repository.loadLaunchableApps().filter { it.packageName != "com.android.settings" }.take(5)
             assertTrue("Need an installed app to exercise selection", candidates.isNotEmpty())
-            val chosen = candidates.first()
+            val chosen = candidates.firstOrNull { it.packageName == "com.google.android.deskclock" }
+                ?: candidates.first()
             val search = requireNotNull(device.findObject(By.clazz("android.widget.EditText")))
             search.click()
             search.text = chosen.label
