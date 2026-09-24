@@ -43,6 +43,7 @@ import kotlinx.coroutines.withContext
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
+import ru.pauza.app.domain.HomeRoleManager
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.domain.UsageAccessMonitor
 import ru.pauza.app.model.InstalledApp
@@ -80,6 +81,9 @@ fun PauseRoot(
     var usageAccessEnabled by remember {
         mutableStateOf(UsageAccessMonitor.isGranted(context))
     }
+    var homeRoleHeld by remember {
+        mutableStateOf(HomeRoleManager.isHeld(context))
+    }
     var firstSetupCompleted by remember {
         mutableStateOf(store.firstSetupCompleted)
     }
@@ -88,8 +92,18 @@ fun PauseRoot(
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
+            homeRoleHeld = HomeRoleManager.isHeld(context)
             delay(700)
         }
+    }
+
+    if (!homeRoleHeld) {
+        HomeRoleSetupScreen(
+            onRequestHomeRole = {
+                context.startActivity(HomeRoleManager.requestIntent(context))
+            }
+        )
+        return
     }
 
     if (!usageAccessEnabled) {
@@ -199,6 +213,62 @@ fun PauseRoot(
                 screen = Screen.SETUP
             }
         )
+    }
+}
+
+@Composable
+private fun HomeRoleSetupScreen(
+    onRequestHomeRole: () -> Unit,
+) {
+    Surface(
+        Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            Modifier
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Text(
+                "Верните кнопку Домой в Паузу",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Text(
+                "Назначьте «Паузу» домашним приложением. Во время активной Паузы кнопка Домой будет возвращать сюда, а не на обычный рабочий стол.",
+                color = PauseMuted,
+                lineHeight = 22.sp
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text(
+                    "Когда Пауза не активна, кнопка Домой будет автоматически открывать ваш прежний рабочий стол. Это обычная системная настройка Android — без ADB и без сброса телефона.",
+                    modifier = Modifier.padding(16.dp),
+                    color = PauseMuted,
+                    lineHeight = 20.sp
+                )
+            }
+
+            Button(
+                onClick = onRequestHomeRole,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("Назначить Паузу для кнопки Домой")
+            }
+
+            Text(
+                "После подтверждения системного окна вернитесь в «Паузу».",
+                color = PauseMuted,
+                fontSize = 13.sp
+            )
+        }
     }
 }
 
