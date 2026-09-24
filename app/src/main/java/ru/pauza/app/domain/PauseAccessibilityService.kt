@@ -51,6 +51,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shuttingDown = false
     private var shutdownReceiverRegistered = false
     private var systemUiGraceUntil = 0L
+    private var blockedCandidatePackage: String? = null
+    private var blockedCandidateSince = 0L
 
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -139,16 +141,21 @@ class PauseAccessibilityService : AccessibilityService() {
         val elapsedNow = SystemClock.elapsedRealtime()
         if (isSystemTransitionSurfaceVisible(event)) {
             systemUiGraceUntil = elapsedNow + SYSTEM_UI_GRACE_MS
+            clearBlockedCandidate()
             hideOverlay()
             return
         }
 
         if (elapsedNow < systemUiGraceUntil) {
+            clearBlockedCandidate()
             hideOverlay()
             return
         }
 
-        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        val foregroundPackage = resolveForegroundPackage(event) ?: run {
+            clearBlockedCandidate()
+            return
+        }
 
         // System UI itself is allowed, but a launcher is not: pressing Home may
         // briefly show the normal desktop, then Usage Access detects that launcher
@@ -157,6 +164,7 @@ class PauseAccessibilityService : AccessibilityService() {
             foregroundPackage == packageName ||
             foregroundPackage == SYSTEM_UI_PACKAGE
         ) {
+            clearBlockedCandidate()
             hideOverlay()
             return
         }
@@ -165,7 +173,9 @@ class PauseAccessibilityService : AccessibilityService() {
         // without flashing the blocking-overlay timer over the launcher.
         if (foregroundPackage in launcherPackages) {
             hideOverlay()
-            returnToPause()
+            if (blockedForegroundPersisted(foregroundPackage)) {
+                returnToPause()
+            }
             return
         }
 
@@ -177,8 +187,8 @@ class PauseAccessibilityService : AccessibilityService() {
             foregroundPackage == ANDROID_FRAMEWORK_PACKAGE &&
             SystemClock.elapsedRealtime() < POST_BOOT_FRAMEWORK_GRACE_MS
         ) {
+            clearBlockedCandidate()
             hideOverlay()
-            returnToPause()
             return
         }
 
@@ -187,6 +197,7 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            clearBlockedCandidate()
             if (foregroundPackage == store.pendingAllowedLaunchPackage) {
                 store.clearPendingAllowedLaunch()
             }
@@ -204,6 +215,7 @@ class PauseAccessibilityService : AccessibilityService() {
             pendingLaunchActive &&
             foregroundPackage == ANDROID_FRAMEWORK_PACKAGE
         ) {
+            clearBlockedCandidate()
             hideOverlay()
             return
         }
@@ -212,8 +224,28 @@ class PauseAccessibilityService : AccessibilityService() {
             store.clearPendingAllowedLaunch()
         }
 
+        if (!blockedForegroundPersisted(foregroundPackage)) {
+            hideOverlay()
+            return
+        }
+
         showOverlay(end)
         returnToPause()
+    }
+
+    private fun clearBlockedCandidate() {
+        blockedCandidatePackage = null
+        blockedCandidateSince = 0L
+    }
+
+    private fun blockedForegroundPersisted(packageName: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (blockedCandidatePackage != packageName) {
+            blockedCandidatePackage = packageName
+            blockedCandidateSince = now
+            return false
+        }
+        return now - blockedCandidateSince >= BLOCK_CONFIRM_MS
     }
 
     private fun isSystemTransitionSurfaceVisible(event: AccessibilityEvent?): Boolean {
@@ -355,6 +387,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
         private const val SYSTEM_UI_GRACE_MS = 750L
+        private const val BLOCK_CONFIRM_MS = 500L
     }
 }
 
