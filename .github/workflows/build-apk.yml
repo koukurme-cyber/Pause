@@ -45,6 +45,14 @@ jobs:
           disable-animations: true
           script: |
             gradle --no-daemon :app:connectedDebugAndroidTest --stacktrace; result=$?; mkdir -p verification; adb pull /sdcard/Download/pauza-verification/. verification/ || true; exit $result
+      - name: Upload visual verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pauza-0.8.3-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification/
+          if-no-files-found: warn
+
       - name: Package review build
         if: always()
         env:
