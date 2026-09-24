@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -1088,22 +1089,23 @@ private fun ActiveScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            val timerTapInteraction = remember { MutableInteractionSource() }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                val tapAt = SystemClock.elapsedRealtime()
-                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                                lastTapAt = tapAt
-                                tapCount += 1
-                                if (tapCount >= 7) {
-                                    tapCount = 0
-                                    onTapExit()
-                                }
-                            }
-                        )
+                    .clickable(
+                        interactionSource = timerTapInteraction,
+                        indication = null
+                    ) {
+                        val tapAt = SystemClock.elapsedRealtime()
+                        if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                        lastTapAt = tapAt
+                        tapCount += 1
+                        if (tapCount >= 7) {
+                            tapCount = 0
+                            onTapExit()
+                        }
                     },
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
