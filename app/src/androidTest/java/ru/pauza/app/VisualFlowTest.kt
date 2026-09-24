@@ -42,7 +42,7 @@ class VisualFlowTest {
     private fun active() { awaitText("Осталось") }
     private fun exitTaps() {
         val bounds = awaitText("Осталось").visibleBounds
-        repeat(7) { device.click(bounds.centerX(), bounds.centerY()); Thread.sleep(90) }
+        repeat(20) { device.click(bounds.centerX(), bounds.centerY()); Thread.sleep(90) }
         awaitText("Продолжить")
     }
 
@@ -69,7 +69,7 @@ class VisualFlowTest {
             shot("05-active")
             record("Independent visual flow: real setup, review, hold-to-start and active screen")
             exitTaps()
-            record("Independent visual flow: seven-tap exit works")
+            record("Independent visual flow: twenty-tap exit works")
             store.sessionDurationMs = 29L * 86400000L + 86340000L
             store.sessionEndEpochMs = System.currentTimeMillis() + store.sessionDurationMs
             launch(); active()
@@ -187,7 +187,7 @@ class VisualFlowTest {
             record("Forbidden Settings launched after Recents is blocked on emulator")
             exitTaps()
             assertEquals(0L, store.sessionEndEpochMs)
-            record("Seven timer taps end Pause")
+            record("Twenty timer taps end Pause")
             // Expiry case seeds a short real session, then lets real clock/controller finish it.
             store.sessionDurationMs = 5000L
             store.sessionEndEpochMs = System.currentTimeMillis() + 5000L
