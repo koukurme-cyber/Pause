@@ -73,6 +73,7 @@ class VisualFlowTest {
             assertTrue("Need an installed app to exercise selection", candidates.isNotEmpty())
             val chosen = candidates.first()
             val search = requireNotNull(device.findObject(By.clazz("android.widget.EditText")))
+            search.click()
             search.text = chosen.label
             device.waitForIdle()
             device.pressBack()
