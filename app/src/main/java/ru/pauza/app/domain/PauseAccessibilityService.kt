@@ -2,10 +2,14 @@ package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -48,6 +52,17 @@ class PauseAccessibilityService : AccessibilityService() {
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var shuttingDown = false
+    private var shutdownReceiverRegistered = false
+
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SHUTDOWN) {
+                shuttingDown = true
+                hideOverlay()
+            }
+        }
+    }
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -59,8 +74,21 @@ class PauseAccessibilityService : AccessibilityService() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        val filter = IntentFilter(Intent.ACTION_SHUTDOWN)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(shutdownReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(shutdownReceiver, filter)
+        }
+        shutdownReceiverRegistered = true
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        shuttingDown = false
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -80,6 +108,11 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            hideOverlay()
+            return
+        }
+
+        if (shuttingDown) {
             hideOverlay()
             return
         }
@@ -116,6 +149,27 @@ class PauseAccessibilityService : AccessibilityService() {
             foregroundPackage == SYSTEM_UI_PACKAGE
         ) {
             hideOverlay()
+            return
+        }
+
+        // Home is intentionally not whitelisted. Return to Pause directly
+        // without flashing the blocking-overlay timer over the launcher.
+        if (foregroundPackage in launcherPackages) {
+            hideOverlay()
+            returnToPause()
+            return
+        }
+
+        // Immediately after a device reboot Android may briefly report the
+        // framework package while System UI and the launcher settle. Treat only
+        // that transient framework surface as a system transition; Settings and
+        // every real application keep their normal whitelist enforcement.
+        if (
+            foregroundPackage == ANDROID_FRAMEWORK_PACKAGE &&
+            SystemClock.elapsedRealtime() < POST_BOOT_FRAMEWORK_GRACE_MS
+        ) {
+            hideOverlay()
+            returnToPause()
             return
         }
 
@@ -239,7 +293,8 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun updateOverlayTimer(sessionEnd: Long) {
-        overlayTimer?.text = formatRemaining(max(0L, sessionEnd - System.currentTimeMillis()))
+        overlayTimer?.text =
+            formatRemainingForOverlay(max(0L, sessionEnd - System.currentTimeMillis()))
     }
 
     private fun hideOverlay() {
@@ -256,6 +311,10 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
         hideOverlay()
+        if (shutdownReceiverRegistered) {
+            runCatching { unregisterReceiver(shutdownReceiver) }
+            shutdownReceiverRegistered = false
+        }
         super.onDestroy()
     }
 
@@ -265,13 +324,22 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
+        private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
     }
 }
 
-private fun formatRemaining(ms: Long): String {
+private fun formatRemainingForOverlay(ms: Long): String {
     val total = ms / 1000
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    val days = total / 86_400
+    val hours = (total % 86_400) / 3600
+    val minutes = (total % 3600) / 60
+    val seconds = total % 60
+
+    return if (days > 0) {
+        String.format(Locale.US, "%d дн %02d:%02d:%02d", days, hours, minutes, seconds)
+    } else if (hours > 0) {
+        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
 }
