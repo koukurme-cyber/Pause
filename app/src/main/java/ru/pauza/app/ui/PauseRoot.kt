@@ -2,7 +2,6 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -36,7 +35,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -733,98 +731,54 @@ private fun DurationPicker(
     duration: PauseDuration,
     onChange: (PauseDuration) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(116.dp)
     ) {
-        CompactDurationField(
-            label = "дни",
-            value = duration.days,
-            min = 0,
-            max = 29,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(days = it)) }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(30.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(PauseMuted.copy(alpha = 0.09f))
         )
-        CompactDurationField(
-            label = "часы",
-            value = duration.hours,
-            min = 0,
-            max = 23,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(hours = it)) }
-        )
-        CompactDurationField(
-            label = "минуты",
-            value = duration.minutes,
-            min = 0,
-            max = 59,
-            modifier = Modifier.weight(1f),
-            onChange = { onChange(duration.copy(minutes = it)) }
-        )
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            DurationWheel(
+                value = duration.days,
+                max = 29,
+                modifier = Modifier.weight(1f),
+                formatter = { formatDaysWheel(it) },
+                onValueChange = { onChange(duration.copy(days = it)) }
+            )
+            DurationWheel(
+                value = duration.hours,
+                max = 23,
+                modifier = Modifier.weight(1f),
+                formatter = { "$it ч" },
+                onValueChange = { onChange(duration.copy(hours = it)) }
+            )
+            DurationWheel(
+                value = duration.minutes,
+                max = 59,
+                modifier = Modifier.weight(1f),
+                formatter = { "$it мин" },
+                onValueChange = { onChange(duration.copy(minutes = it)) }
+            )
+        }
     }
 
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(4.dp))
     Text(
         "От 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
         fontSize = 10.sp
     )
-}
-
-@Composable
-private fun CompactDurationField(
-    label: String,
-    value: Int,
-    min: Int,
-    max: Int,
-    modifier: Modifier = Modifier,
-    onChange: (Int) -> Unit,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5EF)),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color(0xFFE1E3DC))
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                label,
-                color = PauseMuted,
-                fontSize = 11.sp
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                value.toString().padStart(2, '0'),
-                fontSize = 23.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                TextButton(
-                    onClick = { onChange((value - 1).coerceAtLeast(min)) },
-                    enabled = value > min,
-                    modifier = Modifier.size(width = 38.dp, height = 32.dp),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("−", fontSize = 20.sp)
-                }
-                TextButton(
-                    onClick = { onChange((value + 1).coerceAtMost(max)) },
-                    enabled = value < max,
-                    modifier = Modifier.size(width = 38.dp, height = 32.dp),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("+", fontSize = 19.sp)
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -889,7 +843,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp),
+                    .height(28.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
@@ -900,9 +854,9 @@ private fun DurationWheel(
                         else -> 0.16f
                     }
                     val fontSize = when (distance) {
-                        0 -> 21.sp
-                        1 -> 15.sp
-                        else -> 11.sp
+                        0 -> 18.sp
+                        1 -> 13.sp
+                        else -> 10.sp
                     }
                     val fontWeight = when (distance) {
                         0 -> FontWeight.SemiBold
@@ -1081,85 +1035,40 @@ private fun ActiveScreen(
         }
     }
 
-    // Keep exactly the whitelist composition used by the stable 0.7.4 screen.
     val shortcuts = remember(apps, alwaysApps, selected) {
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
-    val context = LocalContext.current
-    val backgroundBitmap = remember {
-        runCatching {
-            BitmapFactory.decodeResource(
-                context.resources,
-                R.drawable.pauza_active_bg
-            )?.asImageBitmap()
-        }.getOrNull()
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFBF8EF),
-                        Color(0xFFF0F3E9),
-                        Color(0xFFE8EFE4)
-                    )
-                )
-            )
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        if (backgroundBitmap != null) {
-            Image(
-                bitmap = backgroundBitmap,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFF9F5EA).copy(alpha = .84f),
-                            Color(0xFFF9F5EA).copy(alpha = .42f),
-                            Color(0xFFE9F0E4).copy(alpha = .60f),
-                        )
-                    )
-                )
-        )
-
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = 20.dp)
         ) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(18.dp))
             Text(
                 "Пауза",
-                fontSize = 28.sp,
+                fontSize = 31.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF173B2C)
+                color = MaterialTheme.colorScheme.onBackground
             )
+            Spacer(Modifier.height(2.dp))
             Text(
                 "Доступны только выбранные приложения",
-                color = Color(0xFF526359),
+                color = PauseMuted,
                 fontSize = 14.sp
             )
 
-            Spacer(Modifier.height(20.dp))
-            Box(
+            Spacer(Modifier.height(22.dp))
+
+            Card(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(214.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFFFEFA).copy(alpha = .86f))
-                    .border(8.dp, Color(0xFF3FB34F).copy(alpha = .88f), CircleShape)
+                    .fillMaxWidth()
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
@@ -1174,57 +1083,56 @@ private fun ActiveScreen(
                             }
                         )
                     },
-                contentAlignment = Alignment.Center
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA)
+                ),
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E5DD))
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         "Осталось",
-                        color = Color(0xFF5D6A61),
-                        fontSize = 13.sp
+                        color = PauseMuted,
+                        fontSize = 14.sp
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = formatRemainingForLauncher(remaining),
-                        color = Color(0xFF111512),
-                        fontSize = if (remaining >= 24L * 60L * 60L * 1000L) 28.sp else 38.sp,
+                        color = Color(0xFF152219),
+                        fontSize = if (remaining >= 24L * 60L * 60L * 1000L) 34.sp else 43.sp,
+                        lineHeight = 48.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-            Card(
+            Spacer(Modifier.height(24.dp))
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFFEFA).copy(alpha = .84f)
-                ),
-                shape = RoundedCornerShape(26.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = .72f))
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp)
             ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp)
-                ) {
-                    items(
-                        items = shortcuts,
-                        key = { it.launchType.name + ":" + it.packageName }
-                    ) { app ->
-                        LauncherAppIcon(
-                            app = app,
-                            onClick = { onLaunch(app) }
-                        )
-                    }
+                items(
+                    items = shortcuts,
+                    key = { it.launchType.name + ":" + it.packageName }
+                ) { app ->
+                    LauncherAppIcon(
+                        app = app,
+                        onClick = { onLaunch(app) }
+                    )
                 }
             }
-            Spacer(Modifier.height(12.dp))
         }
     }
 }
