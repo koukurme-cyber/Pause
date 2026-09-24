@@ -40,6 +40,52 @@ class VisualFlowTest {
         awaitText("Продолжить")
     }
 
+    @Test fun visualScreensAndTimer() {
+        try {
+            store.clearSession()
+            device.executeShellCommand("appops set ru.pauza.app GET_USAGE_STATS allow")
+            device.executeShellCommand("settings put secure enabled_accessibility_services ru.pauza.app/ru.pauza.app.domain.PauseAccessibilityService")
+            device.executeShellCommand("settings put secure accessibility_enabled 1")
+            store.restrictedSettingsConfirmed = true
+            store.setupChecklistCompleted = true
+            store.selectedPackages = InstalledAppsRepository(context).loadLaunchableApps()
+                .filter { it.packageName != "com.android.settings" }.take(5).map { it.packageName }.toSet()
+            launch()
+            awaitText("Продолжить")
+            Thread.sleep(800)
+            shot("03-setup")
+            awaitText("Продолжить").click()
+            awaitText("Проверьте перед запуском")
+            shot("04-review")
+            val hold = awaitText("Удерживайте 2 секунды, чтобы начать").visibleBounds
+            device.swipe(hold.centerX(), hold.centerY(), hold.centerX(), hold.centerY(), 500)
+            active()
+            shot("05-active")
+            record("Independent visual flow: real setup, review, hold-to-start and active screen")
+            exitTaps()
+            record("Independent visual flow: seven-tap exit works")
+            store.sessionDurationMs = 29L * 86400000L + 86340000L
+            store.sessionEndEpochMs = System.currentTimeMillis() + store.sessionDurationMs
+            launch(); active()
+            shot("06-active-29-days")
+            exitTaps()
+            store.sessionDurationMs = 5000L
+            store.sessionEndEpochMs = System.currentTimeMillis() + 5000L
+            launch(); active()
+            awaitText("Продолжить")
+            assertEquals(0L, store.sessionEndEpochMs)
+            record("Independent visual flow: actual timer expiry returns to setup")
+        } catch (error: Throwable) {
+            shot("visual-failure-screen")
+            device.dumpWindowHierarchy(File(output, "visual-failure-hierarchy.xml"))
+            throw error
+        } finally {
+            device.executeShellCommand("mkdir -p /sdcard/Download/pauza-verification")
+            device.executeShellCommand("cp -r ${output.absolutePath}/. /sdcard/Download/pauza-verification/")
+            store.clearSession()
+        }
+    }
+
     @Test fun realAppFlow() {
         try {
             context.getSharedPreferences("pause_store", 0).edit().clear().commit()
