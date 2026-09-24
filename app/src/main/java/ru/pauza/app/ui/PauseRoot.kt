@@ -842,7 +842,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(18.dp),
+                    .height(21.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (actualValue in 0..max) {
@@ -853,9 +853,9 @@ private fun DurationWheel(
                         else -> 0.16f
                     }
                     val fontSize = when (distance) {
-                        0 -> 18.sp
-                        1 -> 13.sp
-                        else -> 10.sp
+                        0 -> 17.sp
+                        1 -> 12.sp
+                        else -> 9.sp
                     }
                     val fontWeight = when (distance) {
                         0 -> FontWeight.SemiBold
@@ -869,7 +869,12 @@ private fun DurationWheel(
                         fontSize = fontSize,
                         fontWeight = fontWeight,
                         textAlign = TextAlign.Center,
-                        maxLines = 1
+                        maxLines = 1,
+                        lineHeight = when (distance) {
+                            0 -> 18.sp
+                            1 -> 13.sp
+                            else -> 10.sp
+                        }
                     )
                 }
             }
@@ -920,9 +925,10 @@ private fun ReviewScreen(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "После запуска список приложений изменить нельзя до окончания таймера.",
-                color = PauseMuted,
-                lineHeight = 19.sp
+                "После запуска будут работать только выбранные приложения. Список изменить нельзя до окончания таймера.",
+                color = Color(0xFFB3261E),
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.Medium
             )
 
             Spacer(Modifier.height(10.dp))
@@ -1103,7 +1109,7 @@ private fun ActiveScreen(
                         if (tapAt - lastTapAt > 3_000L) tapCount = 0
                         lastTapAt = tapAt
                         tapCount += 1
-                        if (tapCount >= 7) {
+                        if (tapCount >= 20) {
                             tapCount = 0
                             onTapExit()
                         }
