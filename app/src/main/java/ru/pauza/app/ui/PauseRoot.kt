@@ -1113,7 +1113,7 @@ private fun ActiveScreen(
                         indication = null
                     ) {
                         val tapAt = SystemClock.elapsedRealtime()
-                        if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                        if (tapAt - lastTapAt > 8_000L) tapCount = 0
                         lastTapAt = tapAt
                         tapCount += 1
                         if (tapCount >= 20) {
