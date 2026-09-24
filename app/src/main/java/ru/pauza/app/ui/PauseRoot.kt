@@ -797,26 +797,38 @@ private fun DurationWheel(
     formatter: (Int) -> String,
     onValueChange: (Int) -> Unit,
 ) {
+    val valueCount = max + 1
+    val loopBase = remember(max) {
+        val middle = Int.MAX_VALUE / 2
+        middle - Math.floorMod(middle, valueCount)
+    }
+    val initialFirstVisible = loopBase + value.coerceIn(0, max) - 1
+
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = (value + 1).coerceIn(1, max + 1)
+        initialFirstVisibleItemIndex = initialFirstVisible
     )
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
 
-    val centeredValue by remember(listState, max, value) {
+    val centeredItemIndex by remember(listState) {
         derivedStateOf {
             val layout = listState.layoutInfo
             val visible = layout.visibleItemsInfo
             if (visible.isEmpty()) {
-                value.coerceIn(0, max)
+                loopBase + latestValue.coerceIn(0, max)
             } else {
                 val viewportCenter =
                     (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                val nearest = visible.minByOrNull { item ->
+                visible.minByOrNull { item ->
                     abs((item.offset + item.size / 2) - viewportCenter)
-                }
-                ((nearest?.index ?: (value + 2)) - 2).coerceIn(0, max)
+                }?.index ?: (loopBase + latestValue.coerceIn(0, max))
             }
+        }
+    }
+
+    val centeredValue by remember(centeredItemIndex, loopBase, valueCount) {
+        derivedStateOf {
+            Math.floorMod(centeredItemIndex - loopBase, valueCount)
         }
     }
 
@@ -824,16 +836,27 @@ private fun DurationWheel(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
-                    val target = centeredValue.coerceIn(0, max)
-                    val targetTopIndex = (target + 1).coerceIn(1, max + 1)
+                    val layout = listState.layoutInfo
+                    val viewportCenter =
+                        (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+                    val nearestIndex = layout.visibleItemsInfo.minByOrNull { item ->
+                        abs((item.offset + item.size / 2) - viewportCenter)
+                    }?.index ?: centeredItemIndex
+
+                    val targetFirstIndex =
+                        (nearestIndex - 1).coerceIn(0, Int.MAX_VALUE - 3)
+
                     if (
-                        listState.firstVisibleItemIndex != targetTopIndex ||
+                        listState.firstVisibleItemIndex != targetFirstIndex ||
                         listState.firstVisibleItemScrollOffset != 0
                     ) {
-                        listState.animateScrollToItem(targetTopIndex)
+                        listState.animateScrollToItem(targetFirstIndex)
                     }
-                    if (target != latestValue) {
-                        latestOnValueChange(target)
+
+                    val targetValue =
+                        Math.floorMod(nearestIndex - loopBase, valueCount)
+                    if (targetValue != latestValue) {
+                        latestOnValueChange(targetValue)
                     }
                 }
             }
@@ -845,53 +868,51 @@ private fun DurationWheel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         items(
-            count = max + 5,
+            count = Int.MAX_VALUE,
             key = { it }
         ) { listIndex ->
-            val actualValue = listIndex - 2
+            val actualValue = Math.floorMod(listIndex - loopBase, valueCount)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(22.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (actualValue in 0..max) {
-                    val distance = abs(actualValue - centeredValue)
-                    val alpha = when (distance) {
-                        0 -> 1f
-                        1 -> 0.52f
-                        else -> 0.16f
-                    }
-                    val fontSize = when (distance) {
+                val distance = abs(listIndex - centeredItemIndex)
+                val alpha = when (distance) {
+                    0 -> 1f
+                    1 -> 0.52f
+                    else -> 0.16f
+                }
+                val fontSize = when (distance) {
+                    0 -> 16.sp
+                    1 -> 12.sp
+                    else -> 9.sp
+                }
+                val fontWeight = when (distance) {
+                    0 -> FontWeight.SemiBold
+                    1 -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                }
+
+                Text(
+                    text = formatter(actualValue),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                    fontSize = fontSize,
+                    fontWeight = fontWeight,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    lineHeight = when (distance) {
                         0 -> 16.sp
                         1 -> 12.sp
                         else -> 9.sp
-                    }
-                    val fontWeight = when (distance) {
-                        0 -> FontWeight.SemiBold
-                        1 -> FontWeight.Medium
-                        else -> FontWeight.Normal
-                    }
-
-                    Text(
-                        text = formatter(actualValue),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
-                        fontSize = fontSize,
-                        fontWeight = fontWeight,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        lineHeight = when (distance) {
-                            0 -> 16.sp
-                            1 -> 12.sp
-                            else -> 9.sp
-                        },
-                        style = TextStyle(
-                            platformStyle = PlatformTextStyle(
-                                includeFontPadding = false
-                            )
+                    },
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(
+                            includeFontPadding = false
                         )
                     )
-                }
+                )
             }
         }
     }
@@ -1040,20 +1061,25 @@ private fun ActiveScreen(
     ActiveImmersiveMode()
     BackHandler(enabled = true) { }
 
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var remaining by remember(sessionEnd) {
+        mutableLongStateOf(max(0L, sessionEnd - System.currentTimeMillis()))
+    }
     var tapCount by remember { mutableIntStateOf(0) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
 
-    val remaining = max(0L, sessionEnd - now)
-
     LaunchedEffect(sessionEnd) {
-        while (true) {
-            now = System.currentTimeMillis()
-            if (now >= sessionEnd) {
+        val initialRemaining = max(0L, sessionEnd - System.currentTimeMillis())
+        val startedAt = SystemClock.elapsedRealtime()
+        remaining = initialRemaining
+
+        while (remaining > 0L) {
+            val elapsed = SystemClock.elapsedRealtime() - startedAt
+            remaining = max(0L, initialRemaining - elapsed)
+            if (remaining <= 0L) {
                 onFinished()
                 break
             }
-            delay(1000)
+            delay(250)
         }
     }
 
