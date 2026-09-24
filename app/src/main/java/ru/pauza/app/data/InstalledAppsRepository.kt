@@ -37,7 +37,7 @@ class InstalledAppsRepository(private val context: Context) {
         val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
-        val excluded = alwaysAllowedPackages()
+        val excluded = alwaysAllowedPackages() + homePackages()
 
         return pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
             .asSequence()
@@ -69,6 +69,15 @@ class InstalledAppsRepository(private val context: Context) {
             context.startActivity(intent)
             true
         }.getOrDefault(false)
+    }
+
+    private fun homePackages(): Set<String> {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        return pm.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
+            .mapNotNull { it.activityInfo?.packageName }
+            .toSet()
     }
 
     private fun resolveShortcut(
