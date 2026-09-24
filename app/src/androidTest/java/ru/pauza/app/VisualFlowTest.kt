@@ -56,7 +56,16 @@ class VisualFlowTest {
     private fun active() { awaitText("Осталось") }
     private fun exitTaps() {
         val bounds = awaitText("Осталось").visibleBounds
-        repeat(20) { device.click(bounds.centerX(), bounds.centerY()); Thread.sleep(180) }
+        repeat(20) {
+            device.click(bounds.centerX(), bounds.centerY())
+            Thread.sleep(180)
+        }
+
+        val deadline = System.currentTimeMillis() + 5_000L
+        while (store.sessionEndEpochMs > 0L && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100)
+        }
+        assertEquals(0L, store.sessionEndEpochMs)
         awaitText("Продолжить")
     }
 
