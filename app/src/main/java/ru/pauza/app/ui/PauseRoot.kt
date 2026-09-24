@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +44,7 @@ import kotlinx.coroutines.withContext
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
+import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.domain.UsageAccessMonitor
 import ru.pauza.app.model.InstalledApp
@@ -80,28 +82,36 @@ fun PauseRoot(
     var usageAccessEnabled by remember {
         mutableStateOf(UsageAccessMonitor.isGranted(context))
     }
-    var firstSetupCompleted by remember {
-        mutableStateOf(store.firstSetupCompleted)
+    var batteryUnrestricted by remember {
+        mutableStateOf(BatteryOptimizationHelper.isUnrestricted(context))
+    }
+    var restrictedSettingsConfirmed by remember {
+        mutableStateOf(store.restrictedSettingsConfirmed)
+    }
+    var setupChecklistCompleted by remember {
+        mutableStateOf(store.setupChecklistCompleted)
     }
 
     LaunchedEffect(Unit) {
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
+            batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             delay(700)
         }
     }
 
-    if (!usageAccessEnabled) {
-        UsageAccessSetupScreen(
-            onOpenUsageAccess = { UsageAccessMonitor.openSettings(context) }
-        )
-        return
-    }
-
-    if (!firstSetupCompleted || !accessibilityEnabled) {
-        FirstSetupScreen(
-            accessEnabled = accessibilityEnabled,
+    if (
+        !setupChecklistCompleted ||
+        !restrictedSettingsConfirmed ||
+        !usageAccessEnabled ||
+        !accessibilityEnabled
+    ) {
+        SetupChecklistScreen(
+            restrictedSettingsConfirmed = restrictedSettingsConfirmed,
+            usageAccessEnabled = usageAccessEnabled,
+            accessibilityEnabled = accessibilityEnabled,
+            batteryUnrestricted = batteryUnrestricted,
             onOpenAppSettings = {
                 context.startActivity(
                     Intent(
@@ -110,14 +120,28 @@ fun PauseRoot(
                     )
                 )
             },
+            onConfirmRestrictedSettings = {
+                store.restrictedSettingsConfirmed = true
+                restrictedSettingsConfirmed = true
+            },
+            onOpenUsageAccess = {
+                UsageAccessMonitor.openSettings(context)
+            },
             onOpenAccessibility = {
                 AccessibilityPauseBlocker.openSettings(context)
             },
+            onOpenBatterySettings = {
+                BatteryOptimizationHelper.openSettings(context)
+            },
             onContinue = {
-                if (AccessibilityPauseBlocker.isEnabled(context)) {
+                if (
+                    restrictedSettingsConfirmed &&
+                    UsageAccessMonitor.isGranted(context) &&
+                    AccessibilityPauseBlocker.isEnabled(context)
+                ) {
                     store.firstSetupCompleted = true
-                    firstSetupCompleted = true
-                    accessibilityEnabled = true
+                    store.setupChecklistCompleted = true
+                    setupChecklistCompleted = true
                 }
             },
         )
@@ -203,79 +227,23 @@ fun PauseRoot(
 }
 
 @Composable
-private fun UsageAccessSetupScreen(
-    onOpenUsageAccess: () -> Unit,
-) {
-    Surface(
-        Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(
-            Modifier
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Text(
-                "Разрешите контроль приложений",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Text(
-                "Пауза должна видеть, какое приложение сейчас открыто. " +
-                    "Это нужно, чтобы сразу закрывать всё, чего нет в белом списке.",
-                color = PauseMuted,
-                lineHeight = 22.sp
-            )
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = PauseWarning),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        "Одноразовая настройка Android",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        "Откройте «Доступ к статистике использования» и разрешите его для «Паузы». " +
-                            "Компьютер, ADB и сброс телефона не нужны.",
-                        color = PauseMuted,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-
-            Button(
-                onClick = onOpenUsageAccess,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text("Открыть доступ к статистике")
-            }
-
-            Text(
-                "После включения вернитесь в «Паузу» — этот экран исчезнет автоматически.",
-                color = PauseMuted,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun FirstSetupScreen(
-    accessEnabled: Boolean,
+private fun SetupChecklistScreen(
+    restrictedSettingsConfirmed: Boolean,
+    usageAccessEnabled: Boolean,
+    accessibilityEnabled: Boolean,
+    batteryUnrestricted: Boolean,
     onOpenAppSettings: () -> Unit,
+    onConfirmRestrictedSettings: () -> Unit,
+    onOpenUsageAccess: () -> Unit,
     onOpenAccessibility: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
+    var restrictedSettingsOpened by rememberSaveable { mutableStateOf(false) }
+
+    val requiredReady =
+        restrictedSettingsConfirmed && usageAccessEnabled && accessibilityEnabled
+
     Surface(
         Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -285,91 +253,114 @@ private fun FirstSetupScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 22.dp),
-            contentPadding = PaddingValues(top = 26.dp, bottom = 30.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentPadding = PaddingValues(top = 24.dp, bottom = 30.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
                 Text(
-                    "Сначала настроим доступ",
+                    "Настройка Паузы",
                     fontSize = 30.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(7.dp))
                 Text(
-                    "Это нужно один раз. Без этого Android позволит выйти из Паузы на рабочий стол или открыть закрытое приложение.",
+                    "Сделайте настройки по порядку. Следующий шаг станет доступен после предыдущего.",
                     color = PauseMuted,
-                    lineHeight = 22.sp
+                    lineHeight = 21.sp
                 )
             }
 
             item {
-                SetupStep(
+                SetupChecklistCard(
                     number = "1",
-                    title = "Разрешите настройки приложения",
-                    text = "Откройте страницу «Пауза» в настройках телефона. Если в меню ⋮ есть пункт «Разрешить настройки с ограниченным доступом», нажмите его."
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = onOpenAppSettings,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Открыть настройки приложения")
-                }
-            }
-
-            item {
-                SetupStep(
-                    number = "2",
-                    title = "Включите доступ в специальных возможностях",
-                    text = "Откройте «Специальные возможности» → «Скачанные приложения» → «Пауза» и включите доступ."
-                )
-                Spacer(Modifier.height(10.dp))
-                Button(
-                    onClick = onOpenAccessibility,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Открыть специальные возможности")
-                }
-            }
-
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (accessEnabled) PauseGreenSoft else PauseWarning
-                    ),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                if (accessEnabled) "Доступ включён" else "Доступ ещё не включён",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                if (accessEnabled) {
-                                    "Можно переходить к приложению."
-                                } else {
-                                    "Вернитесь сюда после включения доступа."
-                                },
-                                color = PauseMuted,
-                                fontSize = 13.sp
-                            )
+                    title = "Разрешить запрещённые настройки",
+                    text = "Откройте настройки приложения «Пауза». На HyperOS: меню ⋮ → «Разрешить запрещённые настройки». Если такого пункта нет, просто вернитесь и подтвердите шаг.",
+                    completed = restrictedSettingsConfirmed,
+                    enabled = !restrictedSettingsConfirmed,
+                    buttonText = if (restrictedSettingsOpened) {
+                        "Подтвердить, что разрешено"
+                    } else {
+                        "Открыть настройки приложения"
+                    },
+                    onClick = {
+                        if (restrictedSettingsOpened) {
+                            onConfirmRestrictedSettings()
+                        } else {
+                            restrictedSettingsOpened = true
+                            onOpenAppSettings()
                         }
                     }
-                }
+                )
             }
 
             item {
+                SetupChecklistCard(
+                    number = "2",
+                    title = "Доступ к статистике использования",
+                    text = "Нужен только для определения приложения на переднем плане и блокировки всего, чего нет в белом списке.",
+                    completed = usageAccessEnabled,
+                    enabled = restrictedSettingsConfirmed && !usageAccessEnabled,
+                    buttonText = "Открыть настройки",
+                    onClick = onOpenUsageAccess
+                )
+            }
+
+            item {
+                SetupChecklistCard(
+                    number = "3",
+                    title = "Специальные возможности",
+                    text = "Включите «Пауза» в специальных возможностях. Это резервный контроль и блокирующий экран.",
+                    completed = accessibilityEnabled,
+                    enabled = restrictedSettingsConfirmed &&
+                        usageAccessEnabled &&
+                        !accessibilityEnabled,
+                    buttonText = "Открыть настройки",
+                    onClick = onOpenAccessibility
+                )
+            }
+
+            item {
+                SetupChecklistCard(
+                    number = "4",
+                    title = "Работа без ограничений батареи",
+                    text = "Рекомендуется для более надёжной работы Паузы в фоне. Этот шаг необязательный.",
+                    completed = batteryUnrestricted,
+                    enabled = requiredReady && !batteryUnrestricted,
+                    buttonText = "Открыть настройки",
+                    onClick = onOpenBatterySettings,
+                    optional = true
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(2.dp))
                 Button(
                     onClick = onContinue,
-                    enabled = accessEnabled,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    enabled = requiredReady,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
                     shape = RoundedCornerShape(18.dp)
                 ) {
-                    Text("Готово, открыть Паузу", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (batteryUnrestricted) {
+                            "Готово, открыть Паузу"
+                        } else {
+                            "Продолжить"
+                        },
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (requiredReady && !batteryUnrestricted) {
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "Можно продолжить без изменения настроек батареи.",
+                        color = PauseMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -377,26 +368,104 @@ private fun FirstSetupScreen(
 }
 
 @Composable
-private fun SetupStep(
+private fun SetupChecklistCard(
     number: String,
     title: String,
     text: String,
+    completed: Boolean,
+    enabled: Boolean,
+    buttonText: String,
+    onClick: () -> Unit,
+    optional: Boolean = false,
 ) {
-    Row(verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(PauseGreenSoft),
-            contentAlignment = Alignment.Center
+    val containerColor = when {
+        completed -> PauseGreenSoft
+        enabled -> PauseWarning
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(number, color = PauseGreen, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-            Spacer(Modifier.height(4.dp))
-            Text(text, color = PauseMuted, lineHeight = 20.sp)
+            Row(
+                verticalAlignment = Alignment.Top
+            ) {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (completed) PauseGreen
+                            else PauseGreenSoft
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (completed) "✓" else number,
+                        color = if (completed) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            PauseGreen
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            title,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 17.sp,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (optional) {
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                "необязательно",
+                                color = PauseMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text,
+                        color = PauseMuted,
+                        lineHeight = 19.sp,
+                        fontSize = 13.sp
+                    )
+                    if (completed) {
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Готово",
+                            color = PauseGreen,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            if (!completed) {
+                Button(
+                    onClick = onClick,
+                    enabled = enabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(buttonText)
+                }
+            }
         }
     }
 }
