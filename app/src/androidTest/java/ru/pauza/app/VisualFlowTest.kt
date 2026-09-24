@@ -189,7 +189,14 @@ class VisualFlowTest {
             record("Messages opens from active screen")
             launch(); active()
             awaitText(chosen.label).click()
-            Thread.sleep(1800)
+            val launchDeadline = System.currentTimeMillis() + 8_000L
+            while (
+                device.currentPackageName != chosen.packageName &&
+                System.currentTimeMillis() < launchDeadline
+            ) {
+                dismissEmulatorSystemDialog()
+                Thread.sleep(200)
+            }
             assertEquals(chosen.packageName, device.currentPackageName)
             record("Selected application opens and remains available")
             device.pressHome()
