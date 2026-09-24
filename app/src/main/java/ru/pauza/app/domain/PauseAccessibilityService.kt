@@ -51,6 +51,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shuttingDown = false
     private var shutdownReceiverRegistered = false
     private var systemUiGraceUntil = 0L
+    private var systemUiBackgroundRequested = false
 
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -139,6 +140,10 @@ class PauseAccessibilityService : AccessibilityService() {
         val elapsedNow = SystemClock.elapsedRealtime()
         if (isSystemTransitionSurfaceVisible(event)) {
             systemUiGraceUntil = elapsedNow + SYSTEM_UI_GRACE_MS
+            if (!systemUiBackgroundRequested) {
+                systemUiBackgroundRequested = true
+                requestActivityBackground()
+            }
             hideOverlay()
             return
         }
@@ -147,6 +152,8 @@ class PauseAccessibilityService : AccessibilityService() {
             hideOverlay()
             return
         }
+
+        systemUiBackgroundRequested = false
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
@@ -214,6 +221,12 @@ class PauseAccessibilityService : AccessibilityService() {
 
         showOverlay(end)
         returnToPause()
+    }
+
+    private fun requestActivityBackground() {
+        sendBroadcast(
+            Intent(ACTION_BACKGROUND_FOR_SYSTEM_UI).setPackage(packageName)
+        )
     }
 
     private fun isSystemTransitionSurfaceVisible(event: AccessibilityEvent?): Boolean {
@@ -354,7 +367,9 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
-        private const val SYSTEM_UI_GRACE_MS = 750L
+        private const val SYSTEM_UI_GRACE_MS = 1_500L
+        const val ACTION_BACKGROUND_FOR_SYSTEM_UI =
+            "ru.pauza.app.action.BACKGROUND_FOR_SYSTEM_UI"
     }
 }
 
