@@ -3,7 +3,6 @@ package ru.pauza.app.domain
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
@@ -30,18 +29,6 @@ class PauseAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
-
-    private val launcherPackages by lazy {
-        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        (
-            packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
-                .mapNotNull { it.activityInfo?.packageName } +
-                listOfNotNull(
-                    packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                        ?.activityInfo?.packageName
-                )
-            ).toSet() - packageName
-    }
 
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
@@ -108,12 +95,12 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
-        // Home and Android's own navigation surfaces are harmless. The user may
-        // see them; enforcement starts when an actual application is resumed.
+        // System navigation itself is harmless. Home is routed through
+        // PauseHomeActivity, so any other launcher package is treated as a
+        // normal non-whitelisted application during an active Pause.
         if (
             foregroundPackage == packageName ||
-            foregroundPackage == SYSTEM_UI_PACKAGE ||
-            foregroundPackage in launcherPackages
+            foregroundPackage == SYSTEM_UI_PACKAGE
         ) {
             hideOverlay()
             return
