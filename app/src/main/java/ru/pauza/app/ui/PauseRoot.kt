@@ -1144,7 +1144,6 @@ private fun ActiveScreen(
     onFinished: () -> Unit,
     onTapExit: () -> Unit,
 ) {
-    ActiveImmersiveMode()
     BackHandler(enabled = true) { }
 
     var remaining by remember(sessionEnd) {
@@ -1179,6 +1178,8 @@ private fun ActiveScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
