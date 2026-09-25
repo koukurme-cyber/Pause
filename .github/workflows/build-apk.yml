@@ -2,7 +2,7 @@ name: Build and verify Pauza design
 on:
   workflow_dispatch:
   push:
-    branches: [visual-concept-assets-0.8.12]
+    branches: [visual-concept-assets-0.8.13]
 concurrency:
   group: pauza-visual-${{ github.ref }}
   cancel-in-progress: true
@@ -109,7 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=visual-concept-assets-0.8.12&per_page=100" > /tmp/runs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=visual-concept-assets-0.8.13&per_page=100" > /tmp/runs.json
           jq -r --argjson current "$GITHUB_RUN_ID" '.workflow_runs[] | select(.id != $current and .status == "completed") | .id' /tmp/runs.json |
           while read -r run_id; do
             [ -z "$run_id" ] && continue
