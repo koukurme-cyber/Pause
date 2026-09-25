@@ -221,10 +221,12 @@ class PauseAccessibilityService : AccessibilityService() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = roundedBackground(
-                fill = Color.rgb(255, 254, 250),
-                stroke = Color.rgb(220, 227, 217),
-                radiusDp = 26f
+            setBackground(
+                roundedBackground(
+                    fill = Color.rgb(255, 254, 250),
+                    stroke = Color.rgb(220, 227, 217),
+                    radiusDp = 26f
+                )
             )
             setOnClickListener { registerExitTap() }
         }
