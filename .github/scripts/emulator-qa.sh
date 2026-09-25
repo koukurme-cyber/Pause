@@ -77,8 +77,10 @@ cat > /tmp/pause_store.xml <<EOF
 </map>
 EOF
 
+adb push /tmp/pause_store.xml /data/local/tmp/pause_store.xml >/dev/null
+adb shell chmod 644 /data/local/tmp/pause_store.xml
 adb shell run-as "$PKG" mkdir -p "/data/user/0/$PKG/shared_prefs"
-adb shell run-as "$PKG" sh -c "cat > /data/user/0/$PKG/shared_prefs/pause_store.xml" < /tmp/pause_store.xml
+adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
 adb shell am force-stop "$PKG"
 
 adb shell settings put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
