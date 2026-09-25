@@ -10,25 +10,25 @@ mkdir -p "$ARTIFACT_DIR"
 
 snapshot() {
   local name="$1"
-  adb shell dumpsys window windows > "$ARTIFACT_DIR/\${name}-windows.txt" || true
-  adb shell dumpsys activity activities > "$ARTIFACT_DIR/\${name}-activities.txt" || true
-  adb shell dumpsys accessibility > "$ARTIFACT_DIR/\${name}-accessibility.txt" || true
-  adb exec-out screencap -p > "$ARTIFACT_DIR/\${name}.png" 2>/dev/null || true
+  adb shell dumpsys window windows > "$ARTIFACT_DIR/${name}-windows.txt" || true
+  adb shell dumpsys activity activities > "$ARTIFACT_DIR/${name}-activities.txt" || true
+  adb shell dumpsys accessibility > "$ARTIFACT_DIR/${name}-accessibility.txt" || true
+  adb exec-out screencap -p > "$ARTIFACT_DIR/${name}.png" 2>/dev/null || true
 }
 
 pause_visible() {
-  # Application overlays are not guaranteed to be represented in the
-  # UiAutomator accessibility tree. Prefer WindowManager's window list and
-  # fall back to the visible Russian label when available.
-  if adb shell dumpsys window windows 2>/dev/null |
-      grep -A 12 -B 2 "ru.pauza.app" |
-      grep -Eq "TYPE_APPLICATION_OVERLAY|type=2038"; then
-    return 0
-  fi
-
-  adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 1
-  adb shell cat /sdcard/window.xml 2>/dev/null |
-    grep -Fq "Доступны только выбранные приложения"
+  adb shell dumpsys window windows 2>/dev/null |
+    awk -v pkg="$PKG" '
+      /^  Window #[0-9]+ / {
+        if (block ~ ("package=" pkg) && block ~ /ty=APPLICATION_OVERLAY/) found=1
+        block=""
+      }
+      { block = block $0 "\n" }
+      END {
+        if (block ~ ("package=" pkg) && block ~ /ty=APPLICATION_OVERLAY/) found=1
+        exit(found ? 0 : 1)
+      }
+    '
 }
 
 foreground_line() {
@@ -67,9 +67,7 @@ wait_for_pause_hidden() {
 echo "Installing debug APK"
 adb install -r "$APK"
 
-echo "Granting QA permissions"
-adb shell appops set "$PKG" GET_USAGE_STATS allow || true
-adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow || true
+echo "Preparing QA permissions"
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
 
 END_MS="$(( $(date +%s%3N) + 15 * 60 * 1000 ))"
@@ -90,10 +88,21 @@ adb push /tmp/pause_store.xml /data/local/tmp/pause_store.xml >/dev/null
 adb shell chmod 644 /data/local/tmp/pause_store.xml
 adb shell run-as "$PKG" mkdir -p "/data/user/0/$PKG/shared_prefs"
 adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
-adb shell am force-stop "$PKG"
 
-adb shell settings put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
-adb shell settings put secure accessibility_enabled 1
+# A freshly installed package is in Android's STOPPED state. Accessibility
+# services from a stopped package will not bind and Android may clear the
+# enabled-services setting. Launch once before enabling the service.
+echo "Unstopping Pause package"
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+sleep 0.7
+
+echo "Granting special-access app-ops"
+adb shell cmd appops set "$PKG" GET_USAGE_STATS allow
+adb shell cmd appops set "$PKG" SYSTEM_ALERT_WINDOW allow
+
+echo "Enabling Pause accessibility service"
+adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+adb shell settings --user 0 put secure accessibility_enabled 1
 
 echo "Waiting for Pause accessibility service"
 SERVICE_READY=0
@@ -108,8 +117,8 @@ done
 {
   echo "enabled_accessibility_services=$(adb shell settings get secure enabled_accessibility_services)"
   echo "accessibility_enabled=$(adb shell settings get secure accessibility_enabled)"
-  echo "overlay_appop=$(adb shell appops get "$PKG" SYSTEM_ALERT_WINDOW 2>/dev/null || true)"
-  echo "usage_appop=$(adb shell appops get "$PKG" GET_USAGE_STATS 2>/dev/null || true)"
+  echo "overlay_appop=$(adb shell cmd appops get "$PKG" SYSTEM_ALERT_WINDOW 2>/dev/null || true)"
+  echo "usage_appop=$(adb shell cmd appops get "$PKG" GET_USAGE_STATS 2>/dev/null || true)"
   echo "prefs:"
   adb shell run-as "$PKG" cat "/data/user/0/$PKG/shared_prefs/pause_store.xml" 2>/dev/null || true
   echo "accessibility excerpt:"
