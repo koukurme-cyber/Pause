@@ -18,8 +18,18 @@ snapshot() {
 }
 
 pause_visible() {
+  # Application overlays are not guaranteed to be represented in the
+  # UiAutomator accessibility tree. Prefer WindowManager's window list and
+  # fall back to the visible Russian label when available.
+  if adb shell dumpsys window windows 2>/dev/null |
+      grep -A 12 -B 2 "ru.pauza.app" |
+      grep -Eq "TYPE_APPLICATION_OVERLAY|type=2038"; then
+    return 0
+  fi
+
   adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 1
-  adb shell cat /sdcard/window.xml 2>/dev/null | grep -Fq "Доступны только выбранные приложения"
+  adb shell cat /sdcard/window.xml 2>/dev/null |
+    grep -Fq "Доступны только выбранные приложения"
 }
 
 foreground_line() {
@@ -90,6 +100,17 @@ sleep 1
 echo "Starting active Pause"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
 sleep 1
+
+echo "=== QA diagnostics before first assertion ==="
+adb shell run-as "$PKG" cat "/data/user/0/$PKG/shared_prefs/pause_store.xml" || true
+adb shell settings get secure enabled_accessibility_services || true
+adb shell settings get secure accessibility_enabled || true
+adb shell appops get "$PKG" GET_USAGE_STATS SYSTEM_ALERT_WINDOW || true
+adb shell dumpsys accessibility | grep -A 12 -B 4 -F "$PKG" || true
+adb shell dumpsys window windows | grep -A 16 -B 4 -F "$PKG" || true
+foreground_line || true
+echo "=== end diagnostics ==="
+
 wait_for_pause_visible "initial launcher protection"
 snapshot "initial"
 
