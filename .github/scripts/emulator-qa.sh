@@ -12,8 +12,7 @@ snapshot() {
   local name="$1"
   adb shell dumpsys window windows > "$ARTIFACT_DIR/\${name}-windows.txt" || true
   adb shell dumpsys activity activities > "$ARTIFACT_DIR/\${name}-activities.txt" || true
-  adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-  adb shell cat /sdcard/window.xml > "$ARTIFACT_DIR/\${name}-ui.xml" 2>/dev/null || true
+  adb shell dumpsys accessibility > "$ARTIFACT_DIR/\${name}-accessibility.txt" || true
   adb exec-out screencap -p > "$ARTIFACT_DIR/\${name}.png" 2>/dev/null || true
 }
 
@@ -95,7 +94,31 @@ adb shell am force-stop "$PKG"
 
 adb shell settings put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
 adb shell settings put secure accessibility_enabled 1
-sleep 1
+
+echo "Waiting for Pause accessibility service"
+SERVICE_READY=0
+for _ in $(seq 1 30); do
+  if adb shell dumpsys accessibility 2>/dev/null | grep -Fq "PauseAccessibilityService"; then
+    SERVICE_READY=1
+    break
+  fi
+  sleep 0.25
+done
+
+{
+  echo "enabled_accessibility_services=$(adb shell settings get secure enabled_accessibility_services)"
+  echo "accessibility_enabled=$(adb shell settings get secure accessibility_enabled)"
+  echo "overlay_appop=$(adb shell appops get "$PKG" SYSTEM_ALERT_WINDOW 2>/dev/null || true)"
+  echo "usage_appop=$(adb shell appops get "$PKG" GET_USAGE_STATS 2>/dev/null || true)"
+  echo "prefs:"
+  adb shell run-as "$PKG" cat "/data/user/0/$PKG/shared_prefs/pause_store.xml" 2>/dev/null || true
+  echo "accessibility excerpt:"
+  adb shell dumpsys accessibility 2>/dev/null | grep -A8 -B4 "PauseAccessibilityService" || true
+} > "$ARTIFACT_DIR/setup-diagnostics.txt"
+
+if [ "$SERVICE_READY" -ne 1 ]; then
+  fail "Pause accessibility service did not become active"
+fi
 
 echo "Starting active Pause"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
