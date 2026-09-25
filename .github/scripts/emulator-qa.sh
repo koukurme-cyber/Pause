@@ -19,13 +19,20 @@ snapshot() {
 pause_visible() {
   adb shell dumpsys window windows 2>/dev/null |
     awk -v pkg="$PKG" '
+      function check() {
+        if (
+          block ~ ("package=" pkg) &&
+          block ~ /ty=APPLICATION_OVERLAY/ &&
+          block ~ /isVisible=true/
+        ) found=1
+      }
       /^  Window #[0-9]+ / {
-        if (block ~ ("package=" pkg) && block ~ /ty=APPLICATION_OVERLAY/) found=1
+        check()
         block=""
       }
       { block = block $0 "\n" }
       END {
-        if (block ~ ("package=" pkg) && block ~ /ty=APPLICATION_OVERLAY/) found=1
+        check()
         exit(found ? 0 : 1)
       }
     '
