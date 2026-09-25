@@ -18,24 +18,7 @@ snapshot() {
 
 pause_visible() {
   adb shell dumpsys window windows 2>/dev/null |
-    awk -v pkg="$PKG" '
-      function check() {
-        if (
-          block ~ ("package=" pkg) &&
-          block ~ /ty=APPLICATION_OVERLAY/ &&
-          block ~ /isVisible=true/
-        ) found=1
-      }
-      /^  Window #[0-9]+ / {
-        check()
-        block=""
-      }
-      { block = block $0 "\n" }
-      END {
-        check()
-        exit(found ? 0 : 1)
-      }
-    '
+    python3 -c 'import re,sys; t=sys.stdin.read(); blocks=re.split(r"(?=  Window #\\d+ )", t); sys.exit(0 if any("package=ru.pauza.app" in b and "ty=APPLICATION_OVERLAY" in b and "isVisible=true" in b for b in blocks) else 1)'
 }
 
 foreground_line() {
