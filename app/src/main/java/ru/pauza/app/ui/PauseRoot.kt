@@ -2,7 +2,6 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -11,10 +10,13 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,9 +32,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
@@ -227,6 +238,54 @@ fun PauseRoot(
 }
 
 @Composable
+private fun BrandHeader(
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_pauza),
+            contentDescription = null,
+            modifier = Modifier
+                .size(if (compact) 48.dp else 62.dp)
+                .clip(RoundedCornerShape(if (compact) 15.dp else 19.dp))
+        )
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text(
+                "Пауза",
+                fontSize = if (compact) 27.sp else 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "Только нужное",
+                fontSize = if (compact) 13.sp else 15.sp,
+                color = PauseMuted
+            )
+        }
+    }
+}
+
+@Composable
+private fun SoftScreenBackground(
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.pauza_ui_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+        content()
+    }
+}
+
+@Composable
 private fun SetupChecklistScreen(
     restrictedSettingsConfirmed: Boolean,
     usageAccessEnabled: Boolean,
@@ -244,23 +303,23 @@ private fun SetupChecklistScreen(
     val requiredReady =
         restrictedSettingsConfirmed && usageAccessEnabled && accessibilityEnabled
 
-    Surface(
-        Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    SoftScreenBackground {
         LazyColumn(
             Modifier
+                .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 22.dp),
-            contentPadding = PaddingValues(top = 24.dp, bottom = 30.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 18.dp),
+            contentPadding = PaddingValues(top = 18.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
+                BrandHeader()
+                Spacer(Modifier.height(24.dp))
                 Text(
                     "Настройка Паузы",
                     fontSize = 30.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(7.dp))
                 Text(
@@ -339,8 +398,12 @@ private fun SetupChecklistScreen(
                     enabled = requiredReady,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(18.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF123D2E),
+                        disabledContainerColor = Color(0xFFD9DCD6),
+                    )
                 ) {
                     Text(
                         if (batteryUnrestricted) {
@@ -348,7 +411,8 @@ private fun SetupChecklistScreen(
                         } else {
                             "Продолжить"
                         },
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
                     )
                 }
 
@@ -378,75 +442,85 @@ private fun SetupChecklistCard(
     onClick: () -> Unit,
     optional: Boolean = false,
 ) {
-    val containerColor = when {
-        completed -> PauseGreenSoft
-        enabled -> PauseWarning
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val outline = when {
+        completed -> Color(0xFFB7D8BB)
+        enabled -> Color(0xFFB8CCB8)
+        else -> Color(0xFFE1E2DD)
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(20.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            ,
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, outline.copy(alpha = .25f))
     ) {
         Column(
             Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.Top
-            ) {
+            Row(verticalAlignment = Alignment.Top) {
                 Box(
                     Modifier
-                        .size(34.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(
-                            if (completed) PauseGreen
-                            else PauseGreenSoft
+                            when {
+                                completed -> Color(0xFF38B54A)
+                                enabled -> Color(0xFFE0F2DF)
+                                else -> Color(0xFFE8E8E4)
+                            }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         if (completed) "✓" else number,
-                        color = if (completed) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            PauseGreen
+                        color = when {
+                            completed -> Color.White
+                            enabled -> Color(0xFF17633D)
+                            else -> Color(0xFF858984)
                         },
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(13.dp))
 
                 Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
                         Text(
                             title,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 17.sp,
-                            modifier = Modifier.weight(1f, fill = false)
+                            fontSize = 16.sp,
                         )
                         if (optional) {
-                            Spacer(Modifier.width(7.dp))
-                            Text(
-                                "необязательно",
-                                color = PauseMuted,
-                                fontSize = 11.sp
-                            )
+                            Spacer(Modifier.height(5.dp))
+                            Surface(
+                                color = Color(0xFFFFE8A8),
+                                shape = RoundedCornerShape(99.dp)
+                            ) {
+                                Text(
+                                    "необязательно",
+                                    color = Color(0xFF765B18),
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text,
                         color = PauseMuted,
-                        lineHeight = 19.sp,
+                        lineHeight = 18.sp,
                         fontSize = 13.sp
                     )
                     if (completed) {
                         Spacer(Modifier.height(5.dp))
                         Text(
                             "Готово",
-                            color = PauseGreen,
+                            color = Color(0xFF21813B),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
@@ -460,10 +534,16 @@ private fun SetupChecklistCard(
                     enabled = enabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(16.dp)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(13.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE1F2DE),
+                        contentColor = Color(0xFF164E34),
+                        disabledContainerColor = Color(0xFFF0F0ED),
+                        disabledContentColor = Color(0xFF9A9C98),
+                    )
                 ) {
-                    Text(buttonText)
+                    Text(buttonText, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -492,14 +572,16 @@ private fun SetupScreen(
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    SoftScreenBackground {
         Column(
             Modifier
+                .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 10.dp)
+                .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
-            Text("Пауза", fontSize = 29.sp, fontWeight = FontWeight.SemiBold)
+            BrandHeader(compact = true)
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Выберите длительность и доступные приложения.",
                 color = PauseMuted,
@@ -507,21 +589,23 @@ private fun SetupScreen(
                 lineHeight = 18.sp
             )
 
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(8.dp))
             Card(
-                colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
-                shape = RoundedCornerShape(20.dp)
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFE1E3DC))
             ) {
                 Column(
-                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
                         "Длительность паузы",
-                        color = PauseGreen,
+                        color = Color(0xFF184F35),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(3.dp))
                     DurationPicker(
                         duration = duration,
                         onChange = onDuration
@@ -529,28 +613,34 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Card(
-                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
                     "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Найти приложение") },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(17.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFFFFFEFA),
+                    unfocusedContainerColor = Color(0xFFFFFEFA),
+                    focusedBorderColor = Color(0xFF85B18D),
+                    unfocusedBorderColor = Color(0xFFD9DDD5)
+                ),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         TextButton(onClick = { searchQuery = "" }) {
@@ -561,7 +651,7 @@ private fun SetupScreen(
             )
 
             Row(
-                Modifier.fillMaxWidth().height(34.dp),
+                Modifier.fillMaxWidth().height(28.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -577,50 +667,78 @@ private fun SetupScreen(
                 }
             }
 
-            if (loading) {
-                Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (filteredApps.isEmpty()) {
-                Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Ничего не найдено", color = PauseMuted)
-                }
-            } else {
-                LazyColumn(
-                    Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 6.dp)
-                ) {
-                    items(
-                        items = filteredApps,
-                        key = { it.launchType.name + ":" + it.packageName }
-                    ) { app ->
-                        val locked = app in alwaysApps
-                        AppRow(
-                            app = app,
-                            checked = locked || app.packageName in selected,
-                            locked = locked,
-                            onChecked = { enabled ->
-                                if (!locked) onToggle(app.packageName, enabled)
-                            }
-                        )
-                        HorizontalDivider()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(0.dp, Color.Transparent)
+            ) {
+                when {
+                    loading -> Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) { CircularProgressIndicator() }
+
+                    filteredApps.isEmpty() -> Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) { Text("Ничего не найдено", color = PauseMuted) }
+
+                    else -> LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        items(
+                            items = filteredApps,
+                            key = { it.launchType.name + ":" + it.packageName }
+                        ) { app ->
+                            val locked = app in alwaysApps
+                            AppRow(
+                                app = app,
+                                checked = locked || app.packageName in selected,
+                                locked = locked,
+                                onChecked = { enabled ->
+                                    if (!locked) onToggle(app.packageName, enabled)
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            Button(
-                onClick = onContinue,
-                enabled = duration.isValid,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(17.dp)
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .shadow(
+                        7.dp,
+                        RoundedCornerShape(19.dp),
+                        ambientColor = Color(0xFF184B34).copy(alpha = .18f)
+                    )
+                    .clip(RoundedCornerShape(19.dp))
+                    .background(
+                        if (duration.isValid) {
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF1E6842), Color(0xFF45B44D))
+                            )
+                        } else {
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFFD9DCD6), Color(0xFFD9DCD6))
+                            )
+                        }
+                    )
+                    .clickable(enabled = duration.isValid, onClick = onContinue),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Продолжить", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Продолжить",
+                    color = if (duration.isValid) Color.White else Color(0xFF9A9C98),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
             }
         }
     }
@@ -634,15 +752,15 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(66.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(40.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(PauseMuted.copy(alpha = 0.10f))
+                .height(26.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(PauseMuted.copy(alpha = 0.09f))
         )
 
         Row(
@@ -673,7 +791,7 @@ private fun DurationPicker(
         }
     }
 
-    Spacer(Modifier.height(5.dp))
+    Spacer(Modifier.height(4.dp))
     Text(
         "От 1 минуты до 29 дней 23 часов 59 минут",
         color = PauseMuted,
@@ -689,26 +807,38 @@ private fun DurationWheel(
     formatter: (Int) -> String,
     onValueChange: (Int) -> Unit,
 ) {
+    val valueCount = max + 1
+    val loopBase = remember(max) {
+        val middle = Int.MAX_VALUE / 2
+        middle - Math.floorMod(middle, valueCount)
+    }
+    val initialFirstVisible = loopBase + value.coerceIn(0, max) - 1
+
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = value.coerceIn(0, max)
+        initialFirstVisibleItemIndex = initialFirstVisible
     )
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
 
-    val centeredValue by remember(listState, max, value) {
+    val centeredItemIndex by remember(listState) {
         derivedStateOf {
             val layout = listState.layoutInfo
             val visible = layout.visibleItemsInfo
             if (visible.isEmpty()) {
-                value.coerceIn(0, max)
+                loopBase + latestValue.coerceIn(0, max)
             } else {
                 val viewportCenter =
                     (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                val nearest = visible.minByOrNull { item ->
+                visible.minByOrNull { item ->
                     abs((item.offset + item.size / 2) - viewportCenter)
-                }
-                ((nearest?.index ?: (value + 2)) - 2).coerceIn(0, max)
+                }?.index ?: (loopBase + latestValue.coerceIn(0, max))
             }
+        }
+    }
+
+    val centeredValue by remember(centeredItemIndex, loopBase, valueCount) {
+        derivedStateOf {
+            Math.floorMod(centeredItemIndex - loopBase, valueCount)
         }
     }
 
@@ -716,15 +846,27 @@ private fun DurationWheel(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
-                    val target = centeredValue.coerceIn(0, max)
+                    val layout = listState.layoutInfo
+                    val viewportCenter =
+                        (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+                    val nearestIndex = layout.visibleItemsInfo.minByOrNull { item ->
+                        abs((item.offset + item.size / 2) - viewportCenter)
+                    }?.index ?: centeredItemIndex
+
+                    val targetFirstIndex =
+                        (nearestIndex - 1).coerceIn(0, Int.MAX_VALUE - 3)
+
                     if (
-                        listState.firstVisibleItemIndex != target ||
+                        listState.firstVisibleItemIndex != targetFirstIndex ||
                         listState.firstVisibleItemScrollOffset != 0
                     ) {
-                        listState.animateScrollToItem(target)
+                        listState.animateScrollToItem(targetFirstIndex)
                     }
-                    if (target != latestValue) {
-                        latestOnValueChange(target)
+
+                    val targetValue =
+                        Math.floorMod(nearestIndex - loopBase, valueCount)
+                    if (targetValue != latestValue) {
+                        latestOnValueChange(targetValue)
                     }
                 }
             }
@@ -736,43 +878,51 @@ private fun DurationWheel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         items(
-            count = max + 5,
+            count = Int.MAX_VALUE,
             key = { it }
         ) { listIndex ->
-            val actualValue = listIndex - 2
+            val actualValue = Math.floorMod(listIndex - loopBase, valueCount)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp),
+                    .height(22.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (actualValue in 0..max) {
-                    val distance = abs(actualValue - centeredValue)
-                    val alpha = when (distance) {
-                        0 -> 1f
-                        1 -> 0.52f
-                        else -> 0.16f
-                    }
-                    val fontSize = when (distance) {
-                        0 -> 21.sp
-                        1 -> 15.sp
-                        else -> 11.sp
-                    }
-                    val fontWeight = when (distance) {
-                        0 -> FontWeight.SemiBold
-                        1 -> FontWeight.Medium
-                        else -> FontWeight.Normal
-                    }
-
-                    Text(
-                        text = formatter(actualValue),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
-                        fontSize = fontSize,
-                        fontWeight = fontWeight,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
+                val distance = abs(listIndex - centeredItemIndex)
+                val alpha = when (distance) {
+                    0 -> 1f
+                    1 -> 0.52f
+                    else -> 0.16f
                 }
+                val fontSize = when (distance) {
+                    0 -> 16.sp
+                    1 -> 12.sp
+                    else -> 9.sp
+                }
+                val fontWeight = when (distance) {
+                    0 -> FontWeight.SemiBold
+                    1 -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                }
+
+                Text(
+                    text = formatter(actualValue),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                    fontSize = fontSize,
+                    fontWeight = fontWeight,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    lineHeight = when (distance) {
+                        0 -> 16.sp
+                        1 -> 12.sp
+                        else -> 9.sp
+                    },
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(
+                            includeFontPadding = false
+                        )
+                    )
+                )
             }
         }
     }
@@ -804,87 +954,102 @@ private fun ReviewScreen(
             .distinctBy { it.launchType.name + ":" + it.packageName }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    SoftScreenBackground {
         Column(
             Modifier
+                .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(20.dp)
+                .padding(18.dp)
         ) {
+            BrandHeader(compact = true)
+            Spacer(Modifier.height(10.dp))
             Text(
                 "Проверьте перед запуском",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
-                "После запуска список приложений изменить нельзя до окончания таймера.",
-                color = PauseMuted,
-                lineHeight = 22.sp
+                "После запуска будут работать только выбранные приложения. Список изменить нельзя до окончания таймера.",
+                color = Color(0xFFB3261E),
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.Medium
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
             Card(
-                colors = CardDefaults.cardColors(containerColor = PauseWarning),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
                 shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
-                    Modifier.padding(17.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         "Точно всё нужное оставили?",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp
+                        fontSize = 16.sp
                     )
                     Text(
                         "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
                         color = PauseMuted,
-                        lineHeight = 20.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Пауза: " + formatDuration(duration),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold
-            )
             Spacer(Modifier.height(10.dp))
-
-            Text(
-                "Доступные приложения",
-                color = PauseMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = .8.sp
-            )
-            Spacer(Modifier.height(10.dp))
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                contentPadding = PaddingValues(bottom = 18.dp)
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E4DD))
             ) {
-                items(
-                    items = reviewApps,
-                    key = { it.launchType.name + ":" + it.packageName }
-                ) { app ->
-                    LauncherAppIcon(app = app)
+                Column(Modifier.fillMaxSize().padding(15.dp)) {
+                    Text(
+                        "Пауза: " + formatDuration(duration),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Доступные приложения",
+                        color = PauseMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = .8.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                        contentPadding = PaddingValues(bottom = 8.dp)
+                    ) {
+                        items(
+                            items = reviewApps,
+                            key = { it.launchType.name + ":" + it.packageName }
+                        ) { app ->
+                            LauncherAppIcon(app = app)
+                        }
+                    }
                 }
             }
 
+            Spacer(Modifier.height(14.dp))
             HoldButton(onConfirmed = onStart)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFB9C3B8))
             ) {
                 Text("Вернуться и изменить")
             }
@@ -926,86 +1091,131 @@ private fun ActiveScreen(
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
-    Surface(
-        Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.pauza_active_concept_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Color(0xFFFBF7EA).copy(alpha = .10f))
+        )
+
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(34.dp))
-            Text(
-                "Пауза",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            Spacer(Modifier.height(22.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF3DB94A))
+                )
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    "Пауза",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF172119)
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
             Text(
                 "Доступны только выбранные приложения",
-                color = PauseMuted,
-                fontSize = 14.sp
+                color = Color(0xFF596359),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(24.dp))
+
+            val timerTapInteraction = remember { MutableInteractionSource() }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                val tapAt = SystemClock.elapsedRealtime()
-                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                                lastTapAt = tapAt
-                                tapCount += 1
-                                if (tapCount >= 7) {
-                                    tapCount = 0
-                                    onTapExit()
-                                }
-                            }
-                        )
+                    .clickable(
+                        interactionSource = timerTapInteraction,
+                        indication = null
+                    ) {
+                        val tapAt = SystemClock.elapsedRealtime()
+                        if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                        lastTapAt = tapAt
+                        tapCount += 1
+                        if (tapCount >= 7) {
+                            tapCount = 0
+                            onTapExit()
+                        }
                     },
-                colors = CardDefaults.cardColors(containerColor = PauseGreenSoft),
-                shape = RoundedCornerShape(24.dp)
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
+                ),
+                shape = RoundedCornerShape(30.dp),
+                border = BorderStroke(
+                    1.dp,
+                    Color.White.copy(alpha = .74f)
+                )
             ) {
                 Row(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val context = LocalContext.current
-                    val clockBitmap = remember {
-                        context.assets.open("ic_pause_clock.png").use { stream ->
-                            BitmapFactory.decodeStream(stream)?.asImageBitmap()
-                        }
-                    }
-                    if (clockBitmap != null) {
+                    Box(
+                        Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFFE7F3E2).copy(alpha = .94f)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Image(
-                            bitmap = clockBitmap,
+                            painter = painterResource(R.drawable.ic_pauza_leaf),
                             contentDescription = null,
-                            modifier = Modifier.size(56.dp)
+                            modifier = Modifier.size(30.dp)
                         )
                     }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
+
+                    Spacer(Modifier.width(17.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             "Осталось",
-                            color = PauseMuted,
+                            color = Color(0xFF667067),
                             fontSize = 13.sp
                         )
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             text = formatRemainingForLauncher(remaining),
-                            color = PauseGreen,
-                            fontSize = if (remaining >= 24L * 60L * 60L * 1000L) 31.sp else 38.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF111713),
+                            fontSize = when {
+                                remaining >= 86_400_000L -> 31.sp
+                                remaining >= 3_600_000L -> 38.sp
+                                else -> 42.sp
+                            },
+                            lineHeight = 44.sp,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(28.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -1013,8 +1223,8 @@ private fun ActiveScreen(
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp)
             ) {
                 items(
                     items = shortcuts,
@@ -1022,7 +1232,8 @@ private fun ActiveScreen(
                 ) { app ->
                     LauncherAppIcon(
                         app = app,
-                        onClick = { onLaunch(app) }
+                        onClick = { onLaunch(app) },
+                        compact = true
                     )
                 }
             }
@@ -1034,9 +1245,16 @@ private fun ActiveScreen(
 private fun LauncherAppIcon(
     app: InstalledApp,
     onClick: (() -> Unit)? = null,
+    compact: Boolean = false,
 ) {
     val interactionModifier =
         if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
+    val tileSize = if (compact) 58.dp else 66.dp
+    val iconSize = if (compact) 48.dp else 54.dp
+    val radius = if (compact) 18.dp else 20.dp
+    val labelSize = if (compact) 11.sp else 12.sp
+    val labelLineHeight = if (compact) 13.sp else 14.sp
 
     Column(
         modifier = Modifier
@@ -1044,38 +1262,52 @@ private fun LauncherAppIcon(
             .then(interactionModifier),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val bitmap = app.icon
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = app.label,
-                modifier = Modifier.size(62.dp)
-            )
-        } else {
-            Box(
-                Modifier
-                    .size(62.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(PauseGreenSoft),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    app.label.take(1).uppercase(Locale.getDefault()),
-                    color = PauseGreen,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24.sp
+        Box(
+            Modifier
+                .size(tileSize)
+                .shadow(
+                    if (compact) 5.dp else 7.dp,
+                    RoundedCornerShape(radius),
+                    ambientColor = Color.Black.copy(alpha = .08f)
                 )
+                .clip(RoundedCornerShape(radius))
+                .background(Color(0xFFFFFEFA).copy(alpha = .90f)),
+            contentAlignment = Alignment.Center
+        ) {
+            val bitmap = app.icon
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = app.label,
+                    modifier = Modifier.size(iconSize)
+                )
+            } else {
+                Box(
+                    Modifier
+                        .size(iconSize)
+                        .clip(RoundedCornerShape(if (compact) 15.dp else 16.dp))
+                        .background(PauseGreenSoft),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        app.label.take(1).uppercase(Locale.getDefault()),
+                        color = PauseGreen,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 19.sp else 22.sp
+                    )
+                }
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(if (compact) 6.dp else 7.dp))
         Text(
             text = app.label,
-            fontSize = 12.sp,
-            lineHeight = 14.sp,
+            fontSize = labelSize,
+            lineHeight = labelLineHeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            color = Color(0xFF1C221E)
         )
     }
 }
@@ -1129,11 +1361,16 @@ private fun AppRow(
     onChecked: (Boolean) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFFF8F8F4))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AppIconSmall(app)
-        Spacer(Modifier.width(11.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(app.label, fontWeight = FontWeight.Medium)
             if (locked) {
@@ -1150,14 +1387,14 @@ private fun AppRow(
             enabled = !locked,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                checkedTrackColor = PauseGreen,
-                checkedBorderColor = PauseGreen,
+                checkedTrackColor = Color(0xFF36B34A),
+                checkedBorderColor = Color(0xFF36B34A),
                 uncheckedThumbColor = PauseMuted,
                 uncheckedTrackColor = MaterialTheme.colorScheme.surface,
-                uncheckedBorderColor = PauseMuted,
-                disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f),
-                disabledCheckedTrackColor = PauseGreen.copy(alpha = 0.38f),
-                disabledCheckedBorderColor = PauseGreen.copy(alpha = 0.38f),
+                uncheckedBorderColor = Color(0xFFCBD0C8),
+                disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.62f),
+                disabledCheckedTrackColor = Color(0xFF36B34A).copy(alpha = 0.42f),
+                disabledCheckedBorderColor = Color(0xFF36B34A).copy(alpha = 0.32f),
             )
         )
     }
@@ -1219,9 +1456,14 @@ private fun HoldButton(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(54.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(PauseGreen)
+            .height(56.dp)
+            .shadow(7.dp, RoundedCornerShape(19.dp), ambientColor = Color(0xFF184B34).copy(alpha = .18f))
+            .clip(RoundedCornerShape(19.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFF1E6842), Color(0xFF45B44D))
+                )
+            )
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -1239,8 +1481,9 @@ private fun HoldButton(
             } else {
                 "Удерживайте 2 секунды, чтобы начать"
             },
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = Color.White,
             fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
@@ -1264,8 +1507,10 @@ private fun formatRemainingForLauncher(ms: Long): String {
 
     return if (days > 0) {
         String.format(Locale.US, "%d дн %02d:%02d:%02d", days, hours, minutes, seconds)
-    } else {
+    } else if (hours > 0) {
         String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
 
