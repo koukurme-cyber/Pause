@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - recovery-stable-0.7.4-timerfix
+      - stable-navigation-0.8.30
 
 concurrency:
   group: pauza-main-build
@@ -44,8 +45,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 66/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.7.4-timerfix"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 85/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.30"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -56,12 +57,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-design-latest.apk
-          test -s Pauza-design-latest.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.30.apk
+          test -s Pauza-0.8.30.apk
 
-          if gh release view pauza-design-latest >/dev/null 2>&1; then
-            gh release upload pauza-design-latest Pauza-design-latest.apk --clobber
-            gh release edit pauza-design-latest --target "$GITHUB_SHA" --title "Пауза — 0.7.4 timer fix" --notes "Functional baseline from consumer-strict-0.7.4 with timer-only fixes: stable countdown refresh on return and consistent day-aware formatting. Blocking logic is unchanged. Reboot experiments are intentionally excluded."
+          if gh release view pauza-0.8.30 >/dev/null 2>&1; then
+            gh release upload pauza-0.8.30 Pauza-0.8.30.apk --clobber
+            gh release edit pauza-0.8.30 --target "$GITHUB_SHA" --title "Пауза — 0.8.30" --notes "Overlay prototype stabilized: only real window transitions affect foreground state, launch grace ignores stale launcher events, and Back triggers a single delayed verification."
           else
-            gh release create pauza-design-latest Pauza-design-latest.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — стабильная база 0.7.4" --notes "Exact functional baseline from consumer-strict-0.7.4. Only installable version metadata and test-release publishing changed. Reboot experiments are intentionally excluded."
+            gh release create pauza-0.8.30 Pauza-0.8.30.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.8.30" --notes "Overlay prototype stabilized: only real window transitions affect foreground state, launch grace ignores stale launcher events, and Back triggers a single delayed verification."
           fi
