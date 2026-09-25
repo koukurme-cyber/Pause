@@ -15,6 +15,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -578,10 +580,13 @@ private fun SetupScreen(
             allApps.filter { it.label.contains(query, ignoreCase = true) }
         }
     }
-    val listExpanded by remember {
+    val collapseThresholdPx = with(LocalDensity.current) {
+        56.dp.roundToPx()
+    }
+    val listExpanded by remember(appListState, collapseThresholdPx) {
         derivedStateOf {
             appListState.firstVisibleItemIndex > 0 ||
-                appListState.firstVisibleItemScrollOffset > 24
+                appListState.firstVisibleItemScrollOffset > collapseThresholdPx
         }
     }
 
@@ -605,8 +610,18 @@ private fun SetupScreen(
 
             AnimatedVisibility(
                 visible = !listExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(durationMillis = 480)
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 320)
+                ),
+                exit = shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(durationMillis = 480)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 260)
+                )
             ) {
                 Column {
                     Spacer(Modifier.height(7.dp))
@@ -773,14 +788,14 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(88.dp)
+            .height(90.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(30.dp)
-                .clip(RoundedCornerShape(15.dp))
+                .height(32.dp)
+                .clip(RoundedCornerShape(16.dp))
                 .background(PauseMuted.copy(alpha = 0.09f))
         )
 
@@ -906,7 +921,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(26.dp),
+                    .height(30.dp),
                 contentAlignment = Alignment.Center
             ) {
                 val distance = abs(listIndex - centeredItemIndex)
