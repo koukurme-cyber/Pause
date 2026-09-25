@@ -3,6 +3,7 @@ package ru.pauza.app.domain
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -36,11 +37,18 @@ class PauseAccessibilityService : AccessibilityService() {
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
     private val handler = Handler(Looper.getMainLooper())
+    private val launcherPackages by lazy {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
+            .mapNotNull { it.activityInfo?.packageName }
+            .toSet() - packageName
+    }
 
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
     private var overlaySessionEnd = 0L
     private var suppressOverlayUntil = 0L
+    private var pendingAllowedPackage: String? = null
     private var tapCount = 0
     private var lastTapAt = 0L
 
@@ -61,11 +69,20 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (isRecentsSurface(event)) {
+            suppressOverlayUntil = 0L
+            pendingAllowedPackage = null
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            handler.postDelayed({ enforceCurrentState() }, RECENTS_RETURN_DELAY_MS)
+            return
+        }
+
         val eventPackage = event?.packageName?.toString()
         if (eventPackage == SYSTEM_UI_PACKAGE) {
             updateOverlayTimer()
             return
         }
+
         enforceCurrentState(event)
     }
 
@@ -88,15 +105,51 @@ class PauseAccessibilityService : AccessibilityService() {
 
         updateOverlayTimer(sessionEnd)
 
-        if (SystemClock.elapsedRealtime() < suppressOverlayUntil) {
+        val allowedPackages = store.selectedPackages +
+            appsRepository.alwaysAllowedPackages() +
+            packageName
+
+        val eventPackage = event?.packageName?.toString()
+
+        // A fresh launcher event is authoritative. Do not let a stale UsageStats
+        // sample from the previously allowed app keep the blocker hidden.
+        if (!eventPackage.isNullOrBlank() && eventPackage in launcherPackages) {
+            suppressOverlayUntil = 0L
+            pendingAllowedPackage = null
+            showOverlay(sessionEnd)
+            return
+        }
+
+        // Likewise, an explicit transition into any disallowed application must
+        // win over the short launch grace used while an allowed app is opening.
+        if (
+            !eventPackage.isNullOrBlank() &&
+            eventPackage != SYSTEM_UI_PACKAGE &&
+            eventPackage !in allowedPackages
+        ) {
+            suppressOverlayUntil = 0L
+            pendingAllowedPackage = null
+            showOverlay(sessionEnd)
+            return
+        }
+
+        if (eventPackage == pendingAllowedPackage) {
+            pendingAllowedPackage = null
+            suppressOverlayUntil = 0L
+        }
+
+        if (
+            SystemClock.elapsedRealtime() < suppressOverlayUntil &&
+            (
+                eventPackage.isNullOrBlank() ||
+                    eventPackage == packageName ||
+                    eventPackage == pendingAllowedPackage
+                )
+        ) {
             return
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
-
-        val allowedPackages = store.selectedPackages +
-            appsRepository.alwaysAllowedPackages() +
-            packageName
 
         if (foregroundPackage in allowedPackages) {
             hideOverlay()
@@ -107,7 +160,17 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        UsageAccessMonitor.foregroundPackage(this)?.let { return it }
+        val eventPackage = event?.packageName?.toString()
+        if (
+            !eventPackage.isNullOrBlank() &&
+            eventPackage != SYSTEM_UI_PACKAGE &&
+            (
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+                )
+        ) {
+            return eventPackage
+        }
 
         val applicationWindow = windows.asSequence()
             .filter {
@@ -125,7 +188,29 @@ class PauseAccessibilityService : AccessibilityService() {
             return rootPackage
         }
 
-        return event?.packageName?.toString()?.takeIf { it != SYSTEM_UI_PACKAGE }
+        return UsageAccessMonitor.foregroundPackage(this)
+    }
+
+    private fun isRecentsSurface(event: AccessibilityEvent?): Boolean {
+        event ?: return false
+
+        val eventPackage = event.packageName?.toString().orEmpty()
+        if (
+            eventPackage != SYSTEM_UI_PACKAGE &&
+            eventPackage !in launcherPackages
+        ) {
+            return false
+        }
+
+        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceId = event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val eventText = event.text.joinToString(" ").lowercase(Locale.ROOT)
+
+        return RECENTS_HINTS.any { hint ->
+            className.contains(hint) ||
+                sourceId.contains(hint) ||
+                eventText.contains(hint)
+        }
     }
 
     private fun showOverlay(sessionEnd: Long) {
@@ -352,10 +437,12 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun launchAllowed(app: InstalledApp) {
+        pendingAllowedPackage = app.packageName
         suppressOverlayUntil = SystemClock.elapsedRealtime() + LAUNCH_GRACE_MS
         hideOverlay()
 
         if (!appsRepository.launch(app)) {
+            pendingAllowedPackage = null
             suppressOverlayUntil = 0L
             enforceCurrentState()
         }
@@ -428,6 +515,16 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
+        private const val RECENTS_RETURN_DELAY_MS = 120L
+        private val RECENTS_HINTS = listOf(
+            "recents",
+            "recent_apps",
+            "recentapps",
+            "overview",
+            "quickstep",
+            "taskview",
+            "task_view"
+        )
         private const val EXIT_TAP_COUNT = 7
         private const val EXIT_TAP_WINDOW_MS = 3_000L
     }
