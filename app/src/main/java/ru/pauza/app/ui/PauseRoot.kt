@@ -1001,7 +1001,7 @@ private fun DurationWheel(
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = unitFormatter(actualValue),
-                        modifier = Modifier.width(38.dp),
+                        modifier = Modifier.width(48.dp),
                         color = if (distance == 0) {
                             Color(0xFF184F35)
                         } else {
