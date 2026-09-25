@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -83,7 +84,30 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        enforceCurrentState(event)
+        // Only real window transitions may change the foreground decision.
+        // Content/click/selection events from a previous or background app are
+        // deliberately ignored because they were causing false re-blocks.
+        if (
+            event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            enforceCurrentState(event)
+        }
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (
+            event.keyCode == KeyEvent.KEYCODE_BACK &&
+            event.action == KeyEvent.ACTION_UP &&
+            isSessionActive()
+        ) {
+            suppressOverlayUntil = 0L
+            pendingAllowedPackage = null
+            handler.postDelayed({ enforceCurrentState() }, BACK_RETURN_DELAY_MS)
+        }
+
+        // Never consume Back. Allowed apps keep normal in-app navigation.
+        return false
     }
 
     private fun enforceCurrentState(event: AccessibilityEvent? = null) {
@@ -110,42 +134,47 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         val eventPackage = event?.packageName?.toString()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val launchPending = pendingAllowedPackage
+        val launchGraceActive =
+            launchPending != null && nowElapsed < suppressOverlayUntil
 
-        // A fresh launcher event is authoritative. Do not let a stale UsageStats
-        // sample from the previously allowed app keep the blocker hidden.
-        if (!eventPackage.isNullOrBlank() && eventPackage in launcherPackages) {
-            suppressOverlayUntil = 0L
+        // While an allowed app is being launched, ignore stale launcher/window
+        // events from the screen underneath. The grace ends immediately when
+        // the requested allowed app actually appears, or by timeout.
+        if (launchGraceActive) {
+            if (eventPackage == launchPending) {
+                pendingAllowedPackage = null
+                suppressOverlayUntil = 0L
+            } else {
+                return
+            }
+        } else if (launchPending != null) {
+            // Launch never became foreground within the grace period.
             pendingAllowedPackage = null
+            suppressOverlayUntil = 0L
+        }
+
+        val isWindowTransition =
+            event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+
+        if (
+            isWindowTransition &&
+            !eventPackage.isNullOrBlank() &&
+            eventPackage in launcherPackages
+        ) {
             showOverlay(sessionEnd)
             return
         }
 
-        // Likewise, an explicit transition into any disallowed application must
-        // win over the short launch grace used while an allowed app is opening.
         if (
+            isWindowTransition &&
             !eventPackage.isNullOrBlank() &&
             eventPackage != SYSTEM_UI_PACKAGE &&
             eventPackage !in allowedPackages
         ) {
-            suppressOverlayUntil = 0L
-            pendingAllowedPackage = null
             showOverlay(sessionEnd)
-            return
-        }
-
-        if (eventPackage == pendingAllowedPackage) {
-            pendingAllowedPackage = null
-            suppressOverlayUntil = 0L
-        }
-
-        if (
-            SystemClock.elapsedRealtime() < suppressOverlayUntil &&
-            (
-                eventPackage.isNullOrBlank() ||
-                    eventPackage == packageName ||
-                    eventPackage == pendingAllowedPackage
-                )
-        ) {
             return
         }
 
@@ -157,6 +186,11 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         showOverlay(sessionEnd)
+    }
+
+    private fun isSessionActive(): Boolean {
+        val end = store.sessionEndEpochMs
+        return end > 0L && System.currentTimeMillis() < end
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -188,6 +222,8 @@ class PauseAccessibilityService : AccessibilityService() {
             return rootPackage
         }
 
+        // UsageStats is only a fallback when Accessibility cannot identify an
+        // active application window. It is never allowed to override fresh UI.
         return UsageAccessMonitor.foregroundPackage(this)
     }
 
@@ -516,6 +552,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
         private const val RECENTS_RETURN_DELAY_MS = 120L
+        private const val BACK_RETURN_DELAY_MS = 180L
         private val RECENTS_HINTS = listOf(
             "recents",
             "recent_apps",
