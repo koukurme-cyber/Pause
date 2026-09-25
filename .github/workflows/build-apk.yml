@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - rollback-stable-0.6.0-20260925
 
 concurrency:
   group: pauza-main-build
@@ -52,10 +53,10 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk Pauza-0.6.0.apk
           test -s Pauza-0.6.0.apk
 
-          if gh release view pauza-latest >/dev/null 2>&1; then
-            gh release upload pauza-latest Pauza-0.6.0.apk --clobber
-            gh release delete-asset pauza-latest Pauza-0.5.0.apk -y >/dev/null 2>&1 || true
-            gh release edit pauza-latest               --title "Пауза 0.6.0"               --notes "Release build: compact centered duration controls, higher app list, launcher-style active Pause screen."
+          if gh release view pauza-0.6.0-stable-rollback >/dev/null 2>&1; then
+            gh release upload pauza-0.6.0-stable-rollback Pauza-0.6.0.apk --clobber
+            gh release delete-asset pauza-0.6.0-stable-rollback Pauza-0.5.0.apk -y >/dev/null 2>&1 || true
+            gh release edit pauza-0.6.0-stable-rollback               --title "Пауза 0.6.0 — стабильный откат"               --notes "Exact stable 0.6.0 rollback build."
           else
-            gh release create pauza-latest Pauza-0.6.0.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.0"               --notes "Release build: compact centered duration controls, higher app list, launcher-style active Pause screen."
+            gh release create pauza-0.6.0-stable-rollback Pauza-0.6.0.apk               --target "$GITHUB_SHA"               --title "Пауза 0.6.0"               --notes "Release build: compact centered duration controls, higher app list, launcher-style active Pause screen."
           fi
