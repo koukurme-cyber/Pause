@@ -101,6 +101,9 @@ fun PauseRoot(
     var usageAccessEnabled by remember {
         mutableStateOf(UsageAccessMonitor.isGranted(context))
     }
+    var overlayEnabled by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
     var batteryUnrestricted by remember {
         mutableStateOf(BatteryOptimizationHelper.isUnrestricted(context))
     }
@@ -115,6 +118,7 @@ fun PauseRoot(
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
+            overlayEnabled = Settings.canDrawOverlays(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             delay(700)
         }
@@ -124,11 +128,13 @@ fun PauseRoot(
         !setupChecklistCompleted ||
         !restrictedSettingsConfirmed ||
         !usageAccessEnabled ||
+        !overlayEnabled ||
         !accessibilityEnabled
     ) {
         SetupChecklistScreen(
             restrictedSettingsConfirmed = restrictedSettingsConfirmed,
             usageAccessEnabled = usageAccessEnabled,
+            overlayEnabled = overlayEnabled,
             accessibilityEnabled = accessibilityEnabled,
             batteryUnrestricted = batteryUnrestricted,
             onOpenAppSettings = {
@@ -146,6 +152,14 @@ fun PauseRoot(
             onOpenUsageAccess = {
                 UsageAccessMonitor.openSettings(context)
             },
+            onOpenOverlay = {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + context.packageName)
+                    )
+                )
+            },
             onOpenAccessibility = {
                 AccessibilityPauseBlocker.openSettings(context)
             },
@@ -156,6 +170,7 @@ fun PauseRoot(
                 if (
                     restrictedSettingsConfirmed &&
                     UsageAccessMonitor.isGranted(context) &&
+                    Settings.canDrawOverlays(context) &&
                     AccessibilityPauseBlocker.isEnabled(context)
                 ) {
                     store.firstSetupCompleted = true
@@ -223,7 +238,14 @@ fun PauseRoot(
             }
         )
 
-        Screen.ACTIVE -> ActiveScreen(
+        Screen.ACTIVE -> {
+            LaunchedEffect(sessionEnd) {
+                if (Settings.canDrawOverlays(context)) {
+                    delay(250)
+                    (context as? Activity)?.moveTaskToBack(true)
+                }
+            }
+            ActiveScreen(
             apps = apps,
             alwaysApps = alwaysApps,
             selected = selected,
@@ -242,6 +264,7 @@ fun PauseRoot(
                 screen = Screen.SETUP
             }
         )
+        }
     }
 }
 
@@ -298,11 +321,13 @@ private fun SoftScreenBackground(
 private fun SetupChecklistScreen(
     restrictedSettingsConfirmed: Boolean,
     usageAccessEnabled: Boolean,
+    overlayEnabled: Boolean,
     accessibilityEnabled: Boolean,
     batteryUnrestricted: Boolean,
     onOpenAppSettings: () -> Unit,
     onConfirmRestrictedSettings: () -> Unit,
     onOpenUsageAccess: () -> Unit,
+    onOpenOverlay: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onOpenBatterySettings: () -> Unit,
     onContinue: () -> Unit,
@@ -310,7 +335,7 @@ private fun SetupChecklistScreen(
     var restrictedSettingsOpened by rememberSaveable { mutableStateOf(false) }
 
     val requiredReady =
-        restrictedSettingsConfirmed && usageAccessEnabled && accessibilityEnabled
+        restrictedSettingsConfirmed && usageAccessEnabled && overlayEnabled && accessibilityEnabled
 
     SoftScreenBackground {
         LazyColumn(
@@ -376,11 +401,26 @@ private fun SetupChecklistScreen(
             item {
                 SetupChecklistCard(
                     number = "3",
+                    title = "Показывать поверх других приложений",
+                    text = "Нужно для нового блокирующего экрана Паузы. Системные окна Android, включая меню питания, остаются поверх него.",
+                    completed = overlayEnabled,
+                    enabled = restrictedSettingsConfirmed &&
+                        usageAccessEnabled &&
+                        !overlayEnabled,
+                    buttonText = "Открыть настройки",
+                    onClick = onOpenOverlay
+                )
+            }
+
+            item {
+                SetupChecklistCard(
+                    number = "4",
                     title = "Специальные возможности",
-                    text = "Включите «Пауза» в специальных возможностях. Это резервный контроль и блокирующий экран.",
+                    text = "Оставляем включёнными как резервный источник событий. Сам блокирующий экран теперь работает через обычное системное наложение.",
                     completed = accessibilityEnabled,
                     enabled = restrictedSettingsConfirmed &&
                         usageAccessEnabled &&
+                        overlayEnabled &&
                         !accessibilityEnabled,
                     buttonText = "Открыть настройки",
                     onClick = onOpenAccessibility
@@ -389,7 +429,7 @@ private fun SetupChecklistScreen(
 
             item {
                 SetupChecklistCard(
-                    number = "4",
+                    number = "5",
                     title = "Работа без ограничений батареи",
                     text = "Рекомендуется для более надёжной работы Паузы в фоне. Этот шаг необязательный.",
                     completed = batteryUnrestricted,
