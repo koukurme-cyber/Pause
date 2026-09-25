@@ -804,6 +804,30 @@ private fun DurationPicker(
         )
 
         Row(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(32.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 3.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFE7F3E2).copy(alpha = .82f))
+                        .border(
+                            1.dp,
+                            Color(0xFF85B18D).copy(alpha = .58f),
+                            RoundedCornerShape(14.dp)
+                        )
+                )
+            }
+        }
+
+        Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -811,21 +835,21 @@ private fun DurationPicker(
                 value = duration.days,
                 max = 29,
                 modifier = Modifier.weight(1f),
-                formatter = { formatDaysWheel(it) },
+                unitFormatter = { formatDaysUnit(it) },
                 onValueChange = { onChange(duration.copy(days = it)) }
             )
             DurationWheel(
                 value = duration.hours,
                 max = 23,
                 modifier = Modifier.weight(1f),
-                formatter = { "$it ч" },
+                unitFormatter = { "ч" },
                 onValueChange = { onChange(duration.copy(hours = it)) }
             )
             DurationWheel(
                 value = duration.minutes,
                 max = 59,
                 modifier = Modifier.weight(1f),
-                formatter = { "$it мин" },
+                unitFormatter = { "мин" },
                 onValueChange = { onChange(duration.copy(minutes = it)) }
             )
         }
@@ -844,7 +868,7 @@ private fun DurationWheel(
     value: Int,
     max: Int,
     modifier: Modifier = Modifier,
-    formatter: (Int) -> String,
+    unitFormatter: (Int) -> String,
     onValueChange: (Int) -> Unit,
 ) {
     val valueCount = max + 1
@@ -945,30 +969,66 @@ private fun DurationWheel(
                     else -> FontWeight.Normal
                 }
 
-                Text(
-                    text = formatter(actualValue),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
-                    fontSize = fontSize,
-                    fontWeight = fontWeight,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    lineHeight = when (distance) {
-                        0 -> 18.sp
-                        1 -> 13.sp
-                        else -> 10.sp
-                    },
-                    style = TextStyle(
-                        platformStyle = PlatformTextStyle(
-                            includeFontPadding = false
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = actualValue.toString(),
+                        modifier = Modifier.width(30.dp),
+                        color = if (distance == 0) {
+                            Color(0xFF184F35)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                        },
+                        fontSize = if (distance == 0) 19.sp else fontSize,
+                        fontWeight = if (distance == 0) FontWeight.Bold else fontWeight,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        lineHeight = when (distance) {
+                            0 -> 19.sp
+                            1 -> 13.sp
+                            else -> 10.sp
+                        },
+                        style = TextStyle(
+                            fontFeatureSettings = "tnum",
+                            platformStyle = PlatformTextStyle(
+                                includeFontPadding = false
+                            )
                         )
                     )
-                )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = unitFormatter(actualValue),
+                        modifier = Modifier.width(38.dp),
+                        color = if (distance == 0) {
+                            Color(0xFF184F35)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                        },
+                        fontSize = fontSize,
+                        fontWeight = if (distance == 0) FontWeight.SemiBold else fontWeight,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        lineHeight = when (distance) {
+                            0 -> 18.sp
+                            1 -> 13.sp
+                            else -> 10.sp
+                        },
+                        style = TextStyle(
+                            platformStyle = PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        )
+                    )
+                }
             }
         }
     }
 }
 
-private fun formatDaysWheel(value: Int): String {
+private fun formatDaysUnit(value: Int): String {
     val mod100 = value % 100
     val mod10 = value % 10
     val word = when {
@@ -977,7 +1037,7 @@ private fun formatDaysWheel(value: Int): String {
         mod10 in 2..4 -> "дня"
         else -> "дней"
     }
-    return "$value $word"
+    return word
 }
 
 @Composable
