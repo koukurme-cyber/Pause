@@ -10,6 +10,11 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -264,7 +269,8 @@ private fun BrandHeader(
             Text(
                 "Только нужное",
                 fontSize = if (compact) 13.sp else 15.sp,
-                color = PauseMuted
+                color = Color(0xFF1E6842),
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
@@ -562,6 +568,7 @@ private fun SetupScreen(
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    val appListState = rememberLazyListState()
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
     val filteredApps = remember(allApps, searchQuery) {
         val query = searchQuery.trim()
@@ -569,6 +576,20 @@ private fun SetupScreen(
             allApps
         } else {
             allApps.filter { it.label.contains(query, ignoreCase = true) }
+        }
+    }
+    val listExpanded by remember {
+        derivedStateOf {
+            appListState.firstVisibleItemIndex > 0 ||
+                appListState.firstVisibleItemScrollOffset > 24
+        }
+    }
+
+    LaunchedEffect(searchQuery) {
+        if (appListState.firstVisibleItemIndex > 0 ||
+            appListState.firstVisibleItemScrollOffset > 0
+        ) {
+            appListState.scrollToItem(0)
         }
     }
 
@@ -581,53 +602,50 @@ private fun SetupScreen(
                 .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
             BrandHeader(compact = true)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Выберите длительность и доступные приложения.",
-                color = PauseMuted,
-                fontSize = 14.sp,
-                lineHeight = 18.sp
-            )
 
-            Spacer(Modifier.height(8.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color(0xFFE1E3DC))
+            AnimatedVisibility(
+                visible = !listExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                Column(
-                    Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
+                Column {
+                    Spacer(Modifier.height(7.dp))
                     Text(
-                        "Длительность паузы",
-                        color = Color(0xFF184F35),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
+                        "Выберите длительность и доступные приложения.",
+                        color = Color(0xFF858B86),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
                     )
-                    Spacer(Modifier.height(3.dp))
-                    DurationPicker(
-                        duration = duration,
-                        onChange = onDuration
-                    )
+
+                    Spacer(Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                        ),
+                        shape = RoundedCornerShape(26.dp),
+                        border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+                    ) {
+                        Column(
+                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                "Длительность паузы",
+                                color = Color(0xFF184F35),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            DurationPicker(
+                                duration = duration,
+                                onChange = onDuration
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text(
-                    "Проверьте, что оставили доступными нужные приложения: банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(if (listExpanded) 8.dp else 10.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -671,7 +689,9 @@ private fun SetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .92f)
+                ),
                 shape = RoundedCornerShape(22.dp),
                 border = BorderStroke(0.dp, Color.Transparent)
             ) {
@@ -687,7 +707,8 @@ private fun SetupScreen(
                     ) { Text("Ничего не найдено", color = PauseMuted) }
 
                     else -> LazyColumn(
-                        Modifier.fillMaxSize(),
+                        state = appListState,
+                        modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         items(
@@ -752,13 +773,13 @@ private fun DurationPicker(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(66.dp)
+            .height(88.dp)
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .height(26.dp)
+                .height(30.dp)
                 .clip(RoundedCornerShape(15.dp))
                 .background(PauseMuted.copy(alpha = 0.09f))
         )
@@ -885,7 +906,7 @@ private fun DurationWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(22.dp),
+                    .height(26.dp),
                 contentAlignment = Alignment.Center
             ) {
                 val distance = abs(listIndex - centeredItemIndex)
@@ -895,9 +916,9 @@ private fun DurationWheel(
                     else -> 0.16f
                 }
                 val fontSize = when (distance) {
-                    0 -> 16.sp
-                    1 -> 12.sp
-                    else -> 9.sp
+                    0 -> 18.sp
+                    1 -> 13.sp
+                    else -> 10.sp
                 }
                 val fontWeight = when (distance) {
                     0 -> FontWeight.SemiBold
@@ -913,9 +934,9 @@ private fun DurationWheel(
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     lineHeight = when (distance) {
-                        0 -> 16.sp
-                        1 -> 12.sp
-                        else -> 9.sp
+                        0 -> 18.sp
+                        1 -> 13.sp
+                        else -> 10.sp
                     },
                     style = TextStyle(
                         platformStyle = PlatformTextStyle(
