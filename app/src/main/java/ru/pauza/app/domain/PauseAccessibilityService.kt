@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -77,6 +78,11 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (isBackNavigationEvent(event)) {
+            handleBackNavigation()
+            return
+        }
+
         val eventPackage = event?.packageName?.toString()
         if (eventPackage == SYSTEM_UI_PACKAGE) {
             updateOverlayTimer()
@@ -84,6 +90,20 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         enforceCurrentState(event)
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (
+            event.keyCode == KeyEvent.KEYCODE_BACK &&
+            event.action == KeyEvent.ACTION_UP &&
+            isSessionActive()
+        ) {
+            handleBackNavigation()
+        }
+
+        // Observe the Back key, but never consume it. Allowed apps keep normal
+        // in-app Back behavior; we only verify where Android lands afterwards.
+        return false
     }
 
     private fun enforceCurrentState(event: AccessibilityEvent? = null) {
@@ -159,6 +179,85 @@ class PauseAccessibilityService : AccessibilityService() {
         showOverlay(sessionEnd)
     }
 
+    private fun isSessionActive(): Boolean {
+        val end = store.sessionEndEpochMs
+        return end > 0L && System.currentTimeMillis() < end
+    }
+
+    private fun handleBackNavigation() {
+        if (!isSessionActive()) return
+
+        suppressOverlayUntil = 0L
+        pendingAllowedPackage = null
+
+        BACK_PROBE_DELAYS_MS.forEach { delayMs ->
+            handler.postDelayed(
+                { verifyForegroundAfterBack() },
+                delayMs
+            )
+        }
+    }
+
+    private fun verifyForegroundAfterBack() {
+        val sessionEnd = store.sessionEndEpochMs
+        if (sessionEnd <= 0L || System.currentTimeMillis() >= sessionEnd) {
+            hideOverlay()
+            return
+        }
+
+        if (!Settings.canDrawOverlays(this)) return
+        if (!powerManager.isInteractive || keyguardManager.isKeyguardLocked || keyguardManager.isDeviceLocked) return
+
+        val allowedPackages = store.selectedPackages +
+            appsRepository.alwaysAllowedPackages() +
+            packageName
+
+        val applicationWindowPackage = activeApplicationWindowPackage()
+        val usagePackage = UsageAccessMonitor.foregroundPackage(this)
+
+        val escaped =
+            applicationWindowPackage in launcherPackages ||
+                (
+                    !applicationWindowPackage.isNullOrBlank() &&
+                        applicationWindowPackage !in allowedPackages
+                    ) ||
+                usagePackage in launcherPackages ||
+                (
+                    !usagePackage.isNullOrBlank() &&
+                        usagePackage !in allowedPackages
+                    )
+
+        if (escaped) {
+            showOverlay(sessionEnd)
+        }
+    }
+
+    private fun activeApplicationWindowPackage(): String? =
+        windows.asSequence()
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    (it.isActive || it.isFocused)
+            }
+            .sortedByDescending { it.isActive }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull { it != SYSTEM_UI_PACKAGE }
+
+    private fun isBackNavigationEvent(event: AccessibilityEvent?): Boolean {
+        event ?: return false
+        if (event.packageName?.toString() != SYSTEM_UI_PACKAGE) return false
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return false
+
+        val sourceId = event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val description = event.contentDescription?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val eventText = event.text.joinToString(" ").lowercase(Locale.ROOT)
+
+        return BACK_HINTS.any { hint ->
+            sourceId.contains(hint) ||
+                description.contains(hint) ||
+                eventText.contains(hint)
+        }
+    }
+
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
         val eventPackage = event?.packageName?.toString()
         if (
@@ -172,14 +271,7 @@ class PauseAccessibilityService : AccessibilityService() {
             return eventPackage
         }
 
-        val applicationWindow = windows.asSequence()
-            .filter {
-                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
-                    (it.isActive || it.isFocused)
-            }
-            .sortedByDescending { it.isActive }
-            .mapNotNull { it.root?.packageName?.toString() }
-            .firstOrNull { it != SYSTEM_UI_PACKAGE }
+        val applicationWindow = activeApplicationWindowPackage()
 
         if (!applicationWindow.isNullOrBlank()) return applicationWindow
 
@@ -516,6 +608,13 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
         private const val RECENTS_RETURN_DELAY_MS = 120L
+        private val BACK_PROBE_DELAYS_MS = longArrayOf(80L, 220L, 500L, 900L)
+        private val BACK_HINTS = listOf(
+            "back",
+            "nav_back",
+            "navigation_bar_back",
+            "назад"
+        )
         private val RECENTS_HINTS = listOf(
             "recents",
             "recent_apps",
