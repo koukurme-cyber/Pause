@@ -15,6 +15,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -610,17 +612,19 @@ private fun SetupScreen(
 
             AnimatedVisibility(
                 visible = !listExpanded,
-                enter = expandVertically(
+                enter = slideInVertically(
+                    initialOffsetY = { fullHeight -> -fullHeight },
+                    animationSpec = tween(durationMillis = 520)
+                ) + expandVertically(
                     expandFrom = Alignment.Top,
-                    animationSpec = tween(durationMillis = 480)
-                ) + fadeIn(
-                    animationSpec = tween(durationMillis = 320)
+                    animationSpec = tween(durationMillis = 520)
                 ),
-                exit = shrinkVertically(
+                exit = slideOutVertically(
+                    targetOffsetY = { fullHeight -> -fullHeight },
+                    animationSpec = tween(durationMillis = 520)
+                ) + shrinkVertically(
                     shrinkTowards = Alignment.Top,
-                    animationSpec = tween(durationMillis = 480)
-                ) + fadeOut(
-                    animationSpec = tween(durationMillis = 260)
+                    animationSpec = tween(durationMillis = 520)
                 )
             ) {
                 Column {
@@ -660,7 +664,7 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(if (listExpanded) 8.dp else 10.dp))
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
