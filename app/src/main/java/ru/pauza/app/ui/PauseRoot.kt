@@ -24,7 +24,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -871,38 +870,26 @@ private fun DurationWheel(
     unitFormatter: (Int) -> String,
     onValueChange: (Int) -> Unit,
 ) {
-    val valueCount = max + 1
-    val loopBase = remember(max) {
-        val middle = Int.MAX_VALUE / 2
-        middle - Math.floorMod(middle, valueCount)
-    }
-    val initialFirstVisible = loopBase + value.coerceIn(0, max) - 1
-
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialFirstVisible
+        initialFirstVisibleItemIndex = value.coerceIn(0, max)
     )
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
 
-    val centeredItemIndex by remember(listState) {
+    val centeredValue by remember(listState, max, value) {
         derivedStateOf {
             val layout = listState.layoutInfo
             val visible = layout.visibleItemsInfo
             if (visible.isEmpty()) {
-                loopBase + latestValue.coerceIn(0, max)
+                value.coerceIn(0, max)
             } else {
                 val viewportCenter =
                     (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                visible.minByOrNull { item ->
+                val nearest = visible.minByOrNull { item ->
                     abs((item.offset + item.size / 2) - viewportCenter)
-                }?.index ?: (loopBase + latestValue.coerceIn(0, max))
+                }
+                ((nearest?.index ?: (value + 1)) - 1).coerceIn(0, max)
             }
-        }
-    }
-
-    val centeredValue by remember(centeredItemIndex, loopBase, valueCount) {
-        derivedStateOf {
-            Math.floorMod(centeredItemIndex - loopBase, valueCount)
         }
     }
 
@@ -910,27 +897,15 @@ private fun DurationWheel(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
-                    val layout = listState.layoutInfo
-                    val viewportCenter =
-                        (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                    val nearestIndex = layout.visibleItemsInfo.minByOrNull { item ->
-                        abs((item.offset + item.size / 2) - viewportCenter)
-                    }?.index ?: centeredItemIndex
-
-                    val targetFirstIndex =
-                        (nearestIndex - 1).coerceIn(0, Int.MAX_VALUE - 3)
-
+                    val target = centeredValue.coerceIn(0, max)
                     if (
-                        listState.firstVisibleItemIndex != targetFirstIndex ||
+                        listState.firstVisibleItemIndex != target ||
                         listState.firstVisibleItemScrollOffset != 0
                     ) {
-                        listState.animateScrollToItem(targetFirstIndex)
+                        listState.animateScrollToItem(target)
                     }
-
-                    val targetValue =
-                        Math.floorMod(nearestIndex - loopBase, valueCount)
-                    if (targetValue != latestValue) {
-                        latestOnValueChange(targetValue)
+                    if (target != latestValue) {
+                        latestOnValueChange(target)
                     }
                 }
             }
@@ -942,86 +917,88 @@ private fun DurationWheel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         items(
-            count = Int.MAX_VALUE,
+            count = max + 3,
             key = { it }
         ) { listIndex ->
-            val actualValue = Math.floorMod(listIndex - loopBase, valueCount)
+            val actualValue = listIndex - 1
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(30.dp),
                 contentAlignment = Alignment.Center
             ) {
-                val distance = abs(listIndex - centeredItemIndex)
-                val alpha = when (distance) {
-                    0 -> 1f
-                    1 -> 0.52f
-                    else -> 0.16f
-                }
-                val fontSize = when (distance) {
-                    0 -> 18.sp
-                    1 -> 13.sp
-                    else -> 10.sp
-                }
-                val fontWeight = when (distance) {
-                    0 -> FontWeight.SemiBold
-                    1 -> FontWeight.Medium
-                    else -> FontWeight.Normal
-                }
+                if (actualValue in 0..max) {
+                    val distance = abs(actualValue - centeredValue)
+                    val alpha = when (distance) {
+                        0 -> 1f
+                        1 -> 0.52f
+                        else -> 0.16f
+                    }
+                    val fontSize = when (distance) {
+                        0 -> 18.sp
+                        1 -> 13.sp
+                        else -> 10.sp
+                    }
+                    val fontWeight = when (distance) {
+                        0 -> FontWeight.SemiBold
+                        1 -> FontWeight.Medium
+                        else -> FontWeight.Normal
+                    }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = actualValue.toString(),
-                        modifier = Modifier.width(48.dp),
-                        color = if (distance == 0) {
-                            Color(0xFF184F35)
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-                        },
-                        fontSize = if (distance == 0) 19.sp else fontSize,
-                        fontWeight = if (distance == 0) FontWeight.Bold else fontWeight,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                        lineHeight = when (distance) {
-                            0 -> 19.sp
-                            1 -> 13.sp
-                            else -> 10.sp
-                        },
-                        style = TextStyle(
-                            fontFeatureSettings = "tnum",
-                            platformStyle = PlatformTextStyle(
-                                includeFontPadding = false
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = actualValue.toString(),
+                            modifier = Modifier.width(48.dp),
+                            color = if (distance == 0) {
+                                Color(0xFF184F35)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                            },
+                            fontSize = if (distance == 0) 19.sp else fontSize,
+                            fontWeight = if (distance == 0) FontWeight.Bold else fontWeight,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            lineHeight = when (distance) {
+                                0 -> 19.sp
+                                1 -> 13.sp
+                                else -> 10.sp
+                            },
+                            style = TextStyle(
+                                fontFeatureSettings = "tnum",
+                                platformStyle = PlatformTextStyle(
+                                    includeFontPadding = false
+                                )
                             )
                         )
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = unitFormatter(actualValue),
-                        modifier = Modifier.width(48.dp),
-                        color = if (distance == 0) {
-                            Color(0xFF184F35)
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-                        },
-                        fontSize = fontSize,
-                        fontWeight = if (distance == 0) FontWeight.SemiBold else fontWeight,
-                        textAlign = TextAlign.Start,
-                        maxLines = 1,
-                        lineHeight = when (distance) {
-                            0 -> 18.sp
-                            1 -> 13.sp
-                            else -> 10.sp
-                        },
-                        style = TextStyle(
-                            platformStyle = PlatformTextStyle(
-                                includeFontPadding = false
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = unitFormatter(actualValue),
+                            modifier = Modifier.width(48.dp),
+                            color = if (distance == 0) {
+                                Color(0xFF184F35)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                            },
+                            fontSize = fontSize,
+                            fontWeight = if (distance == 0) FontWeight.SemiBold else fontWeight,
+                            textAlign = TextAlign.Start,
+                            maxLines = 1,
+                            lineHeight = when (distance) {
+                                0 -> 18.sp
+                                1 -> 13.sp
+                                else -> 10.sp
+                            },
+                            style = TextStyle(
+                                platformStyle = PlatformTextStyle(
+                                    includeFontPadding = false
+                                )
                             )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -1208,8 +1185,6 @@ private fun ActiveScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1241,23 +1216,22 @@ private fun ActiveScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            val timerTapInteraction = remember { MutableInteractionSource() }
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(
-                        interactionSource = timerTapInteraction,
-                        indication = null
-                    ) {
-                        val tapAt = SystemClock.elapsedRealtime()
-                        if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                        lastTapAt = tapAt
-                        tapCount += 1
-                        if (tapCount >= 7) {
-                            tapCount = 0
-                            onTapExit()
-                        }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                val tapAt = SystemClock.elapsedRealtime()
+                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                                lastTapAt = tapAt
+                                tapCount += 1
+                                if (tapCount >= 7) {
+                                    tapCount = 0
+                                    onTapExit()
+                                }
+                            }
+                        )
                     },
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
