@@ -248,8 +248,21 @@ class PauseAccessibilityService : AccessibilityService() {
 
 private fun formatRemaining(ms: Long): String {
     val total = ms / 1000
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    val days = total / 86_400
+    val hours = (total % 86_400) / 3600
+    val minutes = (total % 3600) / 60
+    val seconds = total % 60
+
+    return if (days > 0) {
+        String.format(
+            Locale.US,
+            "%d дн %02d:%02d:%02d",
+            days,
+            hours,
+            minutes,
+            seconds
+        )
+    } else {
+        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
 }
