@@ -6,7 +6,7 @@ on:
     branches:
       - main
       - recovery-stable-0.7.4-timerfix
-      - ui-duration-center-0.8.22
+      - stable-tech-current-design-0.8.23
 
 concurrency:
   group: pauza-main-build
@@ -45,8 +45,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 77/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.22"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 78/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.23"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -57,12 +57,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.22.apk
-          test -s Pauza-0.8.22.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.23.apk
+          test -s Pauza-0.8.23.apk
 
-          if gh release view pauza-0.8.22 >/dev/null 2>&1; then
-            gh release upload pauza-0.8.22 Pauza-0.8.22.apk --clobber
-            gh release edit pauza-0.8.22 --target "$GITHUB_SHA" --title "Пауза — 0.8.22" --notes "UI-only fix over 0.8.20: center the selected duration value by using equal fixed widths for number and unit. Protection logic unchanged."
+          if gh release view pauza-0.8.23 >/dev/null 2>&1; then
+            gh release upload pauza-0.8.23 Pauza-0.8.23.apk --clobber
+            gh release edit pauza-0.8.23 --target "$GITHUB_SHA" --title "Пауза — 0.8.23" --notes "Current design on verified 0.7.4-timerfix technical baseline. Core protection files are byte-identical to baseline; active-screen and duration interactions restored to baseline mechanics."
           else
-            gh release create pauza-0.8.22 Pauza-0.8.22.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.8.22" --notes "UI-only fix over 0.8.20: center the selected duration value by using equal fixed widths for number and unit. Protection logic unchanged."
+            gh release create pauza-0.8.23 Pauza-0.8.23.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.8.23" --notes "Current design on verified 0.7.4-timerfix technical baseline. Core protection files are byte-identical to baseline; active-screen and duration interactions restored to baseline mechanics."
           fi
