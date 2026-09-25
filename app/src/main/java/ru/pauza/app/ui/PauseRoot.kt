@@ -952,7 +952,7 @@ private fun DurationWheel(
                     ) {
                         Text(
                             text = actualValue.toString(),
-                            modifier = Modifier.width(48.dp),
+                            modifier = Modifier.width(32.dp),
                             color = if (distance == 0) {
                                 Color(0xFF184F35)
                             } else {
@@ -977,7 +977,7 @@ private fun DurationWheel(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = unitFormatter(actualValue),
-                            modifier = Modifier.width(48.dp),
+                            modifier = Modifier.width(44.dp),
                             color = if (distance == 0) {
                                 Color(0xFF184F35)
                             } else {
@@ -1176,12 +1176,6 @@ private fun ActiveScreen(
             modifier = Modifier.matchParentSize()
         )
 
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(Color(0xFFFBF7EA).copy(alpha = .10f))
-        )
-
         Column(
             Modifier
                 .fillMaxSize()
@@ -1234,7 +1228,7 @@ private fun ActiveScreen(
                         )
                     },
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
+                    containerColor = Color(0xFFFFFEFA)
                 ),
                 shape = RoundedCornerShape(30.dp),
                 border = BorderStroke(
@@ -1252,7 +1246,7 @@ private fun ActiveScreen(
                         Modifier
                             .size(54.dp)
                             .clip(RoundedCornerShape(18.dp))
-                            .background(Color(0xFFE7F3E2).copy(alpha = .94f)),
+                            .background(Color(0xFFE7F3E2)),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
