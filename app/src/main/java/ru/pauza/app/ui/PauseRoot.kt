@@ -976,7 +976,7 @@ private fun DurationWheel(
                 ) {
                     Text(
                         text = actualValue.toString(),
-                        modifier = Modifier.width(30.dp),
+                        modifier = Modifier.width(48.dp),
                         color = if (distance == 0) {
                             Color(0xFF184F35)
                         } else {
