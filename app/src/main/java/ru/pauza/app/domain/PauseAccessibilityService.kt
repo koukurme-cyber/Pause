@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -26,31 +25,16 @@ class PauseAccessibilityService : AccessibilityService() {
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
-    private val launcherPackages by lazy {
-        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        (
-            packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_ALL)
-                .mapNotNull { it.activityInfo?.packageName } +
-                listOfNotNull(
-                    packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                        ?.activityInfo?.packageName
-                )
-            ).toSet() - packageName
-    }
-
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var shuttingDown = false
     private var shutdownReceiverRegistered = false
-    private var fallbackCandidatePackage: String? = null
-    private var fallbackCandidateSince = 0L
 
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SHUTDOWN) {
                 shuttingDown = true
-                clearFallbackCandidate()
             }
         }
     }
@@ -98,15 +82,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
-        if (end <= 0L || System.currentTimeMillis() >= end) {
-            clearFallbackCandidate()
-            return
-        }
-
-        if (shuttingDown) {
-            clearFallbackCandidate()
-            return
-        }
+        if (end <= 0L || System.currentTimeMillis() >= end) return
+        if (shuttingDown) return
 
         if (!powerManager.isInteractive ||
             keyguardManager.isKeyguardLocked ||
@@ -114,117 +91,48 @@ class PauseAccessibilityService : AccessibilityService() {
         ) {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
-            clearFallbackCandidate()
             return
         }
 
         if (wasUnavailableForUnlock) {
             wasUnavailableForUnlock = false
             resumeProtectionAt = SystemClock.elapsedRealtime() + UNLOCK_GRACE_MS
-            clearFallbackCandidate()
             return
         }
 
-        if (SystemClock.elapsedRealtime() < resumeProtectionAt) {
-            clearFallbackCandidate()
-            return
-        }
+        if (SystemClock.elapsedRealtime() < resumeProtectionAt) return
 
-        // Power menu, notification shade and other genuine Android system surfaces
-        // are left completely alone. We do not draw an accessibility overlay at all.
-        if (isSystemSurfaceVisible(event)) {
-            clearFallbackCandidate()
-            return
-        }
+        // Restore the 0.7.4 rule that worked on the real device:
+        // Usage Access is the primary source of the foreground app.
+        // Accessibility is only a fallback when Usage Access has no result.
+        val foregroundPackage =
+            UsageAccessMonitor.foregroundPackage(this)
+                ?: resolveAccessibilityForeground(event)
+                ?: return
 
-        val accessibilityForeground = resolveAccessibilityForeground(event)
-        if (!accessibilityForeground.isNullOrBlank()) {
-            clearFallbackCandidate()
-            enforcePackage(accessibilityForeground)
-            return
-        }
-
-        // Usage Access is only a fallback. OEM usage events can lag behind the
-        // visible app, so require the same blocked package to persist briefly
-        // before acting. This avoids false flashes over allowed apps.
-        val usageForeground = UsageAccessMonitor.foregroundPackage(this) ?: run {
-            clearFallbackCandidate()
-            return
-        }
-
-        if (isAllowedOrSystem(usageForeground)) {
-            clearFallbackCandidate()
-            return
-        }
-
-        if (usageForeground == ANDROID_FRAMEWORK_PACKAGE &&
-            SystemClock.elapsedRealtime() < POST_BOOT_FRAMEWORK_GRACE_MS
+        if (
+            foregroundPackage == packageName ||
+            foregroundPackage == SYSTEM_UI_PACKAGE ||
+            foregroundPackage == ANDROID_FRAMEWORK_PACKAGE
         ) {
-            clearFallbackCandidate()
             return
         }
 
-        if (!fallbackBlockedPackagePersisted(usageForeground)) return
-        enforcePackage(usageForeground)
-    }
+        val allowed =
+            store.selectedPackages +
+                appsRepository.alwaysAllowedPackages() +
+                packageName
 
-    private fun enforcePackage(foregroundPackage: String) {
-        if (foregroundPackage == ANDROID_FRAMEWORK_PACKAGE) return
-        if (isAllowedOrSystem(foregroundPackage)) return
-
-        // Launcher is deliberately not whitelisted. Home may appear for a moment,
-        // then Pause is brought back. Allowed apps are never covered by an overlay.
-        if (foregroundPackage in launcherPackages) {
-            returnToPause()
+        if (foregroundPackage in allowed) {
+            if (foregroundPackage == store.pendingAllowedLaunchPackage) {
+                store.clearPendingAllowedLaunch()
+            }
             return
         }
 
-        val pendingLaunchPackage = store.pendingAllowedLaunchPackage
-        val pendingLaunchUntil = store.pendingAllowedLaunchUntilEpochMs
-        val pendingLaunchActive =
-            !pendingLaunchPackage.isNullOrBlank() &&
-                System.currentTimeMillis() <= pendingLaunchUntil
-
-        if (pendingLaunchActive && foregroundPackage == pendingLaunchPackage) {
-            store.clearPendingAllowedLaunch()
-            return
-        }
-
-        if (!pendingLaunchActive && pendingLaunchPackage != null) {
-            store.clearPendingAllowedLaunch()
-        }
-
+        // No accessibility overlay at all. A blocked app simply causes the
+        // existing Pause activity to be brought to the front.
         returnToPause()
-    }
-
-    private fun isAllowedOrSystem(packageName: String): Boolean {
-        if (packageName == this.packageName || packageName == SYSTEM_UI_PACKAGE) {
-            return true
-        }
-
-        val allowed = store.selectedPackages +
-            appsRepository.alwaysAllowedPackages() +
-            this.packageName
-
-        return packageName in allowed
-    }
-
-    private fun isSystemSurfaceVisible(event: AccessibilityEvent?): Boolean {
-        val eventPackage = event?.packageName?.toString()
-        if (eventPackage == SYSTEM_UI_PACKAGE) return true
-
-        val rootPackage = rootInActiveWindow?.packageName?.toString()
-        if (rootPackage == SYSTEM_UI_PACKAGE) return true
-
-        // Some OEM global-actions / power menus are reported as the framework
-        // package rather than com.android.systemui. Only treat it as a system
-        // surface when it is actually the focused/root window.
-        if (rootPackage == ANDROID_FRAMEWORK_PACKAGE) return true
-
-        return windows.asSequence()
-            .filter { it.isActive || it.isFocused }
-            .mapNotNull { it.root?.packageName?.toString() }
-            .any { it == SYSTEM_UI_PACKAGE || it == ANDROID_FRAMEWORK_PACKAGE }
     }
 
     private fun resolveAccessibilityForeground(event: AccessibilityEvent?): String? {
@@ -236,47 +144,14 @@ class PauseAccessibilityService : AccessibilityService() {
             .filter { it.isActive || it.isFocused }
             .sortedByDescending { it.isActive }
             .mapNotNull { it.root?.packageName?.toString() }
-            .firstOrNull {
-                it != SYSTEM_UI_PACKAGE &&
-                    it != ANDROID_FRAMEWORK_PACKAGE
-            }
+            .firstOrNull()
 
         if (!currentApplication.isNullOrBlank()) return currentApplication
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        if (
-            !rootPackage.isNullOrBlank() &&
-            rootPackage != SYSTEM_UI_PACKAGE &&
-            rootPackage != ANDROID_FRAMEWORK_PACKAGE
-        ) {
-            return rootPackage
-        }
+        if (!rootPackage.isNullOrBlank()) return rootPackage
 
-        val eventPackage = event?.packageName?.toString()
-        if (
-            !eventPackage.isNullOrBlank() &&
-            eventPackage != SYSTEM_UI_PACKAGE &&
-            eventPackage != ANDROID_FRAMEWORK_PACKAGE
-        ) {
-            return eventPackage
-        }
-
-        return null
-    }
-
-    private fun clearFallbackCandidate() {
-        fallbackCandidatePackage = null
-        fallbackCandidateSince = 0L
-    }
-
-    private fun fallbackBlockedPackagePersisted(packageName: String): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        if (fallbackCandidatePackage != packageName) {
-            fallbackCandidatePackage = packageName
-            fallbackCandidateSince = now
-            return false
-        }
-        return now - fallbackCandidateSince >= USAGE_FALLBACK_CONFIRM_MS
+        return event?.packageName?.toString()
     }
 
     private fun returnToPause() {
@@ -310,9 +185,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val ANDROID_FRAMEWORK_PACKAGE = "android"
         private const val RETURN_DEBOUNCE_MS = 220L
-        private const val WATCHDOG_INTERVAL_MS = 350L
+        private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
-        private const val POST_BOOT_FRAMEWORK_GRACE_MS = 60_000L
-        private const val USAGE_FALLBACK_CONFIRM_MS = 700L
     }
 }
