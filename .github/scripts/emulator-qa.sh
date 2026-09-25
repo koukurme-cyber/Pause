@@ -45,13 +45,39 @@ wait_for_pause_visible() {
 
 wait_for_pause_hidden() {
   local label="$1"
-  for _ in $(seq 1 12); do
+  for _ in $(seq 1 20); do
     if ! pause_visible; then
       return 0
     fi
     sleep 0.25
   done
   fail "$label: Pause overlay did not disappear for allowed app"
+}
+
+SCREEN_SIZE=""
+SCREEN_WIDTH=0
+SCREEN_HEIGHT=0
+PHONE_X=0
+PHONE_Y=0
+
+init_screen_coordinates() {
+  SCREEN_SIZE="$(adb shell wm size | tr -d '\r' | awk -F': ' '/Physical size/ {print $2}' | tail -n1)"
+  if [ -z "$SCREEN_SIZE" ]; then
+    SCREEN_SIZE="$(adb shell wm size | tr -d '\r' | awk -F': ' '/Override size/ {print $2}' | tail -n1)"
+  fi
+  SCREEN_WIDTH="${SCREEN_SIZE%x*}"
+  SCREEN_HEIGHT="${SCREEN_SIZE#*x}"
+  PHONE_X=$(( SCREEN_WIDTH * 27 / 100 ))
+  PHONE_Y=$(( SCREEN_HEIGHT * 38 / 100 ))
+  echo "screen=$SCREEN_SIZE phoneTap=$PHONE_X,$PHONE_Y" | tee "$ARTIFACT_DIR/coordinates.txt"
+}
+
+open_allowed_phone() {
+  local label="$1"
+  wait_for_pause_visible "$label precondition"
+  adb shell input tap "$PHONE_X" "$PHONE_Y"
+  wait_for_pause_hidden "$label"
+  sleep 0.35
 }
 
 echo "Installing debug APK"
@@ -135,11 +161,17 @@ echo "=== end diagnostics ==="
 
 wait_for_pause_visible "initial launcher protection"
 snapshot "initial"
+init_screen_coordinates
 
-echo "Test 1: allowed app opens and overlay leaves"
-adb shell am start -W -a android.settings.SETTINGS >/dev/null
-wait_for_pause_hidden "allowed Settings"
-foreground_line | tee "$ARTIFACT_DIR/test1-foreground.txt"
+echo "Test 1: allowed Phone opens through the actual Pause overlay"
+open_allowed_phone "allowed Phone"
+PHONE_FOREGROUND="$(foreground_line)"
+echo "$PHONE_FOREGROUND" | tee "$ARTIFACT_DIR/test1-foreground.txt"
+PHONE_PACKAGE="$(echo "$PHONE_FOREGROUND" | sed -n 's/.* u[0-9]\+ \([^/ ]*\)\/.*/\1/p')"
+if [ -z "$PHONE_PACKAGE" ]; then
+  fail "could not resolve foreground Phone package: $PHONE_FOREGROUND"
+fi
+echo "phonePackage=$PHONE_PACKAGE" | tee -a "$ARTIFACT_DIR/test1-foreground.txt"
 
 echo "Test 2: Home returns to protected Pause"
 adb shell input keyevent KEYCODE_HOME
@@ -147,8 +179,7 @@ wait_for_pause_visible "Home"
 snapshot "home"
 
 echo "Test 3: Recents cannot expose task switcher"
-adb shell am start -W -a android.settings.SETTINGS >/dev/null
-wait_for_pause_hidden "Settings before Recents"
+open_allowed_phone "Phone before Recents"
 adb shell input keyevent KEYCODE_APP_SWITCH
 sleep 0.8
 if pause_visible; then
@@ -156,73 +187,70 @@ if pause_visible; then
 else
   FG="$(foreground_line)"
   echo "$FG" | tee "$ARTIFACT_DIR/test3-result.txt"
-  if ! echo "$FG" | grep -Fq "com.android.settings"; then
+  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
     fail "Recents left an unprotected non-allowed surface: $FG"
   fi
 fi
+adb shell input keyevent KEYCODE_HOME
+wait_for_pause_visible "Home after Recents"
 
-echo "Test 4: Back cannot escape to launcher"
-adb shell am start -W -a android.settings.SETTINGS >/dev/null
-wait_for_pause_hidden "Settings before Back"
+echo "Test 4: Back cannot escape from allowed Phone to launcher"
+open_allowed_phone "Phone before Back"
 adb shell input keyevent KEYCODE_BACK
 sleep 0.7
 if ! pause_visible; then
   FG="$(foreground_line)"
-  if ! echo "$FG" | grep -Fq "com.android.settings"; then
+  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
     fail "Back escaped without Pause protection: $FG"
   fi
 fi
+adb shell input keyevent KEYCODE_HOME
+wait_for_pause_visible "Home after Back"
 
-echo "Test 5: 30-cycle allowed-app/Home stress"
+echo "Test 5: 30-cycle real Phone/Home stress"
 for i in $(seq 1 30); do
-  adb shell am start -a android.settings.SETTINGS >/dev/null
-  sleep 0.25
-  if pause_visible; then
-    fail "stress cycle $i: overlay blocked allowed Settings"
+  open_allowed_phone "stress Phone $i"
+
+  FG="$(foreground_line)"
+  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
+    fail "stress cycle $i: expected allowed Phone foreground, got: $FG"
   fi
 
   adb shell input keyevent KEYCODE_HOME
-  sleep 0.35
-  if ! pause_visible; then
-    fail "stress cycle $i: Home remained unprotected"
-  fi
+  wait_for_pause_visible "stress Home $i"
 
   echo "cycle $i ok" >> "$ARTIFACT_DIR/stress.txt"
 done
 
-echo "Test 6: repeated Back transitions"
+echo "Test 6: repeated real Phone/Back transitions"
 for i in $(seq 1 15); do
-  adb shell am start -a android.settings.SETTINGS >/dev/null
-  sleep 0.3
-  if pause_visible; then
-    fail "Back cycle $i: overlay blocked Settings before Back"
-  fi
+  open_allowed_phone "Back cycle Phone $i"
 
   adb shell input keyevent KEYCODE_BACK
-  sleep 0.6
+  sleep 0.7
 
   if ! pause_visible; then
     FG="$(foreground_line)"
-    if ! echo "$FG" | grep -Fq "com.android.settings"; then
+    if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
       fail "Back cycle $i escaped without protection: $FG"
     fi
   fi
 
   adb shell input keyevent KEYCODE_HOME
-  sleep 0.35
-  if ! pause_visible; then
-    fail "Back cycle $i: Home after Back remained unprotected"
-  fi
+  wait_for_pause_visible "Back cycle Home $i"
   echo "back-cycle $i ok" >> "$ARTIFACT_DIR/back-stress.txt"
 done
 
-echo "Test 7: long-running stability for allowed app"
-adb shell am start -a android.settings.SETTINGS >/dev/null
-wait_for_pause_hidden "Settings before soak"
-for i in $(seq 1 20); do
+echo "Test 7: long-running stability inside allowed Phone"
+open_allowed_phone "Phone before soak"
+for i in $(seq 1 40); do
   sleep 0.5
   if pause_visible; then
-    fail "allowed Settings became blocked during soak at sample $i"
+    fail "allowed Phone became blocked during soak at sample $i"
+  fi
+  FG="$(foreground_line)"
+  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
+    fail "allowed Phone left foreground during soak at sample $i: $FG"
   fi
 done
 
