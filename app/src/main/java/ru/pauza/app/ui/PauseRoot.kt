@@ -905,20 +905,20 @@ private fun ActiveScreen(
     ActiveImmersiveMode()
     BackHandler(enabled = true) { }
 
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var remaining by remember(sessionEnd) {
+        mutableLongStateOf(max(0L, sessionEnd - System.currentTimeMillis()))
+    }
     var tapCount by remember { mutableIntStateOf(0) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
 
-    val remaining = max(0L, sessionEnd - now)
-
     LaunchedEffect(sessionEnd) {
         while (true) {
-            now = System.currentTimeMillis()
-            if (now >= sessionEnd) {
+            remaining = max(0L, sessionEnd - System.currentTimeMillis())
+            if (remaining <= 0L) {
                 onFinished()
                 break
             }
-            delay(1000)
+            delay(250)
         }
     }
 
