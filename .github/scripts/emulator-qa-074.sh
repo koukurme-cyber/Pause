@@ -17,7 +17,8 @@ snapshot() {
 }
 
 foreground_line() {
-  adb shell dumpsys activity activities 2>/dev/null | grep -m1 "mResumedActivity" || true
+  adb shell dumpsys activity activities 2>/dev/null |
+    grep -m1 -E "topResumedActivity=|mResumedActivity" || true
 }
 
 foreground_package() {
