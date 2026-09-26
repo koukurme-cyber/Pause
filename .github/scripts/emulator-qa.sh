@@ -163,9 +163,17 @@ if [ "$SERVICE_READY" -ne 1 ]; then
   fail "Pause accessibility service did not become active"
 fi
 
+init_screen_coordinates
+
 echo "Starting active Pause"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
 sleep 1
+
+# Pixel emulator may still display Android's one-time immersive-mode education
+# panel even when immersive_mode_confirmations is preseeded. Its "Got it"
+# button otherwise intercepts the first Phone tap and creates a false failure.
+adb shell input tap "$(( SCREEN_WIDTH * 86 / 100 ))" "$(( SCREEN_HEIGHT * 25 / 100 ))" || true
+sleep 0.5
 
 echo "=== QA diagnostics before first assertion ==="
 adb shell run-as "$PKG" cat "/data/user/0/$PKG/shared_prefs/pause_store.xml" || true
@@ -179,7 +187,6 @@ echo "=== end diagnostics ==="
 
 wait_for_pause_visible "initial launcher protection"
 snapshot "initial"
-init_screen_coordinates
 
 echo "Test 1: allowed Phone opens through the actual Pause overlay"
 open_allowed_phone "allowed Phone"
