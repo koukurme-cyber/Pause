@@ -91,7 +91,8 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val eventPackage = event?.packageName?.toString()
-        if (eventPackage == SYSTEM_UI_PACKAGE) {
+        if (eventPackage == SYSTEM_UI_PACKAGE || eventPackage == FRAMEWORK_PACKAGE) {
+            Log.d(TAG, "ignore transient system event pkg=" + eventPackage)
             updateOverlayTimer()
             return
         }
@@ -180,6 +181,7 @@ class PauseAccessibilityService : AccessibilityService() {
             isWindowTransition &&
             !eventPackage.isNullOrBlank() &&
             eventPackage != SYSTEM_UI_PACKAGE &&
+            eventPackage != FRAMEWORK_PACKAGE &&
             eventPackage !in allowedPackages
         ) {
             pendingAllowedPackage = null
@@ -268,6 +270,7 @@ class PauseAccessibilityService : AccessibilityService() {
         if (
             !eventPackage.isNullOrBlank() &&
             eventPackage != SYSTEM_UI_PACKAGE &&
+            eventPackage != FRAMEWORK_PACKAGE &&
             (
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
@@ -283,18 +286,25 @@ class PauseAccessibilityService : AccessibilityService() {
             }
             .sortedByDescending { it.isActive }
             .mapNotNull { it.root?.packageName?.toString() }
-            .firstOrNull { it != SYSTEM_UI_PACKAGE }
+            .firstOrNull { it != SYSTEM_UI_PACKAGE && it != FRAMEWORK_PACKAGE }
 
         if (!applicationWindow.isNullOrBlank()) return applicationWindow
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
-        if (!rootPackage.isNullOrBlank() && rootPackage != SYSTEM_UI_PACKAGE) {
+        if (
+            !rootPackage.isNullOrBlank() &&
+            rootPackage != SYSTEM_UI_PACKAGE &&
+            rootPackage != FRAMEWORK_PACKAGE
+        ) {
             return rootPackage
         }
 
+        // "android" is the framework package used by transient system-owned
+        // windows during app/task transitions. It is not an escape target.
         // UsageStats is only a fallback when Accessibility cannot identify an
-        // active application window. It is never allowed to override fresh UI.
+        // actual application window.
         return UsageAccessMonitor.foregroundPackage(this)
+            ?.takeIf { it != SYSTEM_UI_PACKAGE && it != FRAMEWORK_PACKAGE }
     }
 
     private fun isRecentsSurface(event: AccessibilityEvent?): Boolean {
@@ -630,6 +640,7 @@ class PauseAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "PauseQA"
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private const val FRAMEWORK_PACKAGE = "android"
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
         private const val ALLOWED_SETTLE_MS = 1_800L
