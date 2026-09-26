@@ -67,8 +67,9 @@ init_screen_coordinates() {
   fi
   SCREEN_WIDTH="${SCREEN_SIZE%x*}"
   SCREEN_HEIGHT="${SCREEN_SIZE#*x}"
-  PHONE_X=$(( SCREEN_WIDTH * 27 / 100 ))
-  PHONE_Y=$(( SCREEN_HEIGHT * 38 / 100 ))
+  # First shortcut in the fixed four-column overlay grid (Phone).
+  PHONE_X=$(( SCREEN_WIDTH * 16 / 100 ))
+  PHONE_Y=$(( SCREEN_HEIGHT * 30 / 100 ))
   echo "screen=$SCREEN_SIZE phoneTap=$PHONE_X,$PHONE_Y" | tee "$ARTIFACT_DIR/coordinates.txt"
 }
 
@@ -85,6 +86,10 @@ adb install -r "$APK"
 
 echo "Preparing QA permissions"
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
+
+# Prevent Android's one-time "Viewing full screen" education bubble from
+# intercepting the first overlay tap in headless QA.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 
 END_MS="$(( $(date +%s%3N) + 15 * 60 * 1000 ))"
 cat > /tmp/pause_store.xml <<EOF
