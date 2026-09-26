@@ -112,6 +112,9 @@ echo "Unstopping Pause package"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
 sleep 0.7
 
+echo "Lifting Android restricted-settings gate for sideloaded QA APK"
+adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow
+
 echo "Granting special-access app-ops"
 adb shell cmd appops set "$PKG" GET_USAGE_STATS allow
 adb shell cmd appops set "$PKG" SYSTEM_ALERT_WINDOW allow
@@ -133,6 +136,7 @@ done
 {
   echo "enabled_accessibility_services=$(adb shell settings get secure enabled_accessibility_services)"
   echo "accessibility_enabled=$(adb shell settings get secure accessibility_enabled)"
+  echo "restricted_settings_appop=$(adb shell cmd appops get "$PKG" ACCESS_RESTRICTED_SETTINGS 2>/dev/null || true)"
   echo "overlay_appop=$(adb shell cmd appops get "$PKG" SYSTEM_ALERT_WINDOW 2>/dev/null || true)"
   echo "usage_appop=$(adb shell cmd appops get "$PKG" GET_USAGE_STATS 2>/dev/null || true)"
   echo "prefs:"
