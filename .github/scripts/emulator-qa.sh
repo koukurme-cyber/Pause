@@ -84,12 +84,17 @@ open_allowed_phone() {
 echo "Installing debug APK"
 adb install -r "$APK"
 
-echo "Preparing QA permissions"
+echo "Preparing QA environment"
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
 
-# Prevent Android's one-time "Viewing full screen" education bubble from
-# intercepting the first overlay tap in headless QA.
+# Headless Google API images occasionally surface first-boot Launcher ANR/error
+# dialogs while the launcher is still settling. They are emulator noise, not
+# Pause behavior, and can intercept every touch above our overlay.
+adb shell settings put global hide_error_dialogs 1 || true
 adb shell settings put secure immersive_mode_confirmations confirmed || true
+adb shell am force-stop com.google.android.apps.nexuslauncher || true
+adb shell input keyevent KEYCODE_HOME || true
+sleep 2
 
 END_MS="$(( $(date +%s%3N) + 15 * 60 * 1000 ))"
 cat > /tmp/pause_store.xml <<EOF
@@ -164,6 +169,14 @@ if [ "$SERVICE_READY" -ne 1 ]; then
 fi
 
 init_screen_coordinates
+
+# Clear any already-created Launcher ANR dialog from boot before assertions.
+# If the launcher is still recovering, choose "Wait" and give it another beat.
+if adb shell dumpsys window windows 2>/dev/null | grep -Fq "Application Not Responding: com.google.android.apps.nexuslauncher"; then
+  echo "Dismissing Pixel Launcher ANR dialog from emulator boot"
+  adb shell input tap "$(( SCREEN_WIDTH * 27 / 100 ))" "$(( SCREEN_HEIGHT * 45 / 100 ))" || true
+  sleep 2
+fi
 
 echo "Starting active Pause"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
