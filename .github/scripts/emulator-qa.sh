@@ -112,25 +112,34 @@ echo "Unstopping Pause package"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
 sleep 0.7
 
-echo "Lifting Android restricted-settings gate for sideloaded QA APK"
-adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow
-
-echo "Granting special-access app-ops"
-adb shell cmd appops set "$PKG" GET_USAGE_STATS allow
-adb shell cmd appops set "$PKG" SYSTEM_ALERT_WINDOW allow
-
-echo "Enabling Pause accessibility service"
-adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
-adb shell settings --user 0 put secure accessibility_enabled 1
-
-echo "Waiting for Pause accessibility service"
-SERVICE_READY=0
+echo "Waiting for installed accessibility component"
 for _ in $(seq 1 30); do
-  if adb shell dumpsys accessibility 2>/dev/null | grep -Fq "PauseAccessibilityService"; then
-    SERVICE_READY=1
+  if adb shell dumpsys package "$PKG" 2>/dev/null | grep -Fq "PauseAccessibilityService"; then
     break
   fi
   sleep 0.25
+done
+
+echo "Enabling restricted special access and Pause accessibility service"
+SERVICE_READY=0
+for attempt in $(seq 1 12); do
+  # Android 15 may clear special access for a freshly sideloaded package while
+  # install bookkeeping is still settling. Re-apply the test-only gate until
+  # AccessibilityManager confirms an actual bound service.
+  adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
+  adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
+  adb shell cmd appops set "$PKG" SYSTEM_ALERT_WINDOW allow || true
+  adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+  adb shell settings --user 0 put secure accessibility_enabled 1
+
+  sleep 0.5
+  if adb shell dumpsys accessibility 2>/dev/null |
+      grep -A3 "Bound services:" |
+      grep -Fq "label=Пауза"; then
+    SERVICE_READY=1
+    echo "Accessibility bound on attempt $attempt"
+    break
+  fi
 done
 
 {
