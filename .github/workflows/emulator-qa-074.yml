@@ -2,6 +2,12 @@ name: Emulator QA 0.7.4 timerfix
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - recovery-stable-0.7.4-timerfix
+    paths:
+      - ".github/scripts/emulator-qa-074.sh"
+      - ".github/workflows/emulator-qa-074.yml"
   push:
     branches:
       - emulator-qa-0.7.4-timerfix
