@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -67,11 +68,20 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        Log.d(TAG, "serviceConnected sessionEnd=" + store.sessionEndEpochMs)
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        Log.d(
+            TAG,
+            "event type=" + event?.eventType +
+                " pkg=" + event?.packageName +
+                " cls=" + event?.className +
+                " pending=" + pendingAllowedPackage +
+                " trusted=" + trustedAllowedPackage
+        )
         if (isRecentsSurface(event)) {
             suppressOverlayUntil = 0L
             pendingAllowedPackage = null
@@ -137,6 +147,15 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val eventPackage = event?.packageName?.toString()
         val nowElapsed = SystemClock.elapsedRealtime()
+        if (event != null) {
+            Log.d(
+                TAG,
+                "enforce eventPkg=" + eventPackage +
+                    " allowed=" + allowedPackages +
+                    " pending=" + pendingAllowedPackage +
+                    " trusted=" + trustedAllowedPackage
+            )
+        }
         val isWindowTransition =
             event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
@@ -152,6 +171,7 @@ class PauseAccessibilityService : AccessibilityService() {
             trustedAllowedPackage = null
             suppressOverlayUntil = 0L
             trustedAllowedUntil = 0L
+            Log.d(TAG, "decision launcher -> show pkg=" + eventPackage)
             showOverlay(sessionEnd)
             return
         }
@@ -166,6 +186,7 @@ class PauseAccessibilityService : AccessibilityService() {
             trustedAllowedPackage = null
             suppressOverlayUntil = 0L
             trustedAllowedUntil = 0L
+            Log.d(TAG, "decision disallowed event -> show pkg=" + eventPackage)
             showOverlay(sessionEnd)
             return
         }
@@ -180,12 +201,14 @@ class PauseAccessibilityService : AccessibilityService() {
                 suppressOverlayUntil = 0L
                 trustedAllowedPackage = launchPending
                 trustedAllowedUntil = nowElapsed + ALLOWED_SETTLE_MS
+                Log.d(TAG, "decision pending target arrived -> hide pkg=" + launchPending)
                 hideOverlay()
                 return
             }
 
             // Watchdog/transition noise from the surface underneath must not
             // recreate the blocker while Android is opening the requested app.
+            if (event != null) Log.d(TAG, "decision launch grace ignore event pkg=" + eventPackage)
             return
         } else if (launchPending != null) {
             pendingAllowedPackage = null
@@ -199,6 +222,7 @@ class PauseAccessibilityService : AccessibilityService() {
         ) {
             trustedAllowedPackage = eventPackage
             trustedAllowedUntil = nowElapsed + ALLOWED_SETTLE_MS
+            Log.d(TAG, "decision allowed transition -> hide pkg=" + eventPackage)
             hideOverlay()
             return
         }
@@ -211,6 +235,7 @@ class PauseAccessibilityService : AccessibilityService() {
             trustedAllowedPackage != null &&
             nowElapsed < trustedAllowedUntil
         ) {
+            Log.d(TAG, "decision trusted watchdog -> hide pkg=" + trustedAllowedPackage)
             hideOverlay()
             return
         }
@@ -221,12 +246,15 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+        Log.d(TAG, "resolved foreground=" + foregroundPackage + " eventPkg=" + eventPackage)
 
         if (foregroundPackage in allowedPackages) {
+            Log.d(TAG, "decision resolved allowed -> hide pkg=" + foregroundPackage)
             hideOverlay()
             return
         }
 
+        Log.d(TAG, "decision resolved disallowed -> show pkg=" + foregroundPackage)
         showOverlay(sessionEnd)
     }
 
@@ -300,6 +328,7 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        Log.d(TAG, "showOverlay add sessionEnd=" + sessionEnd)
         val root = buildOverlay(sessionEnd)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -515,13 +544,16 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun launchAllowed(app: InstalledApp) {
+        Log.d(TAG, "launchAllowed label=" + app.label + " pkg=" + app.packageName + " type=" + app.launchType)
         pendingAllowedPackage = app.packageName
         trustedAllowedPackage = null
         trustedAllowedUntil = 0L
         suppressOverlayUntil = SystemClock.elapsedRealtime() + LAUNCH_GRACE_MS
         hideOverlay()
 
-        if (!appsRepository.launch(app)) {
+        val launched = appsRepository.launch(app)
+        Log.d(TAG, "launchAllowed result=" + launched + " pkg=" + app.packageName)
+        if (!launched) {
             pendingAllowedPackage = null
             trustedAllowedPackage = null
             trustedAllowedUntil = 0L
@@ -562,7 +594,9 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun hideOverlay() {
         val current = overlay ?: return
+        Log.d(TAG, "hideOverlay view=" + System.identityHashCode(current))
         runCatching { windowManager.removeView(current) }
+            .onFailure { Log.w(TAG, "hideOverlay failed", it) }
         overlay = null
         overlayTimer = null
         overlaySessionEnd = 0L
@@ -594,6 +628,7 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        private const val TAG = "PauseQA"
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
