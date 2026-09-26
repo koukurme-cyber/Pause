@@ -50,6 +50,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var overlaySessionEnd = 0L
     private var suppressOverlayUntil = 0L
     private var pendingAllowedPackage: String? = null
+    private var trustedAllowedPackage: String? = null
+    private var trustedAllowedUntil = 0L
     private var tapCount = 0
     private var lastTapAt = 0L
 
@@ -135,35 +137,21 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val eventPackage = event?.packageName?.toString()
         val nowElapsed = SystemClock.elapsedRealtime()
-        val launchPending = pendingAllowedPackage
-        val launchGraceActive =
-            launchPending != null && nowElapsed < suppressOverlayUntil
-
-        // While an allowed app is being launched, ignore stale launcher/window
-        // events from the screen underneath. The grace ends immediately when
-        // the requested allowed app actually appears, or by timeout.
-        if (launchGraceActive) {
-            if (eventPackage == launchPending) {
-                pendingAllowedPackage = null
-                suppressOverlayUntil = 0L
-            } else {
-                return
-            }
-        } else if (launchPending != null) {
-            // Launch never became foreground within the grace period.
-            pendingAllowedPackage = null
-            suppressOverlayUntil = 0L
-        }
-
         val isWindowTransition =
             event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
 
+        // Explicit launcher/disallowed transitions are authoritative even while
+        // an allowed app is settling after launch.
         if (
             isWindowTransition &&
             !eventPackage.isNullOrBlank() &&
             eventPackage in launcherPackages
         ) {
+            pendingAllowedPackage = null
+            trustedAllowedPackage = null
+            suppressOverlayUntil = 0L
+            trustedAllowedUntil = 0L
             showOverlay(sessionEnd)
             return
         }
@@ -174,8 +162,62 @@ class PauseAccessibilityService : AccessibilityService() {
             eventPackage != SYSTEM_UI_PACKAGE &&
             eventPackage !in allowedPackages
         ) {
+            pendingAllowedPackage = null
+            trustedAllowedPackage = null
+            suppressOverlayUntil = 0L
+            trustedAllowedUntil = 0L
             showOverlay(sessionEnd)
             return
+        }
+
+        val launchPending = pendingAllowedPackage
+        val launchGraceActive =
+            launchPending != null && nowElapsed < suppressOverlayUntil
+
+        if (launchGraceActive) {
+            if (eventPackage == launchPending) {
+                pendingAllowedPackage = null
+                suppressOverlayUntil = 0L
+                trustedAllowedPackage = launchPending
+                trustedAllowedUntil = nowElapsed + ALLOWED_SETTLE_MS
+                hideOverlay()
+                return
+            }
+
+            // Watchdog/transition noise from the surface underneath must not
+            // recreate the blocker while Android is opening the requested app.
+            return
+        } else if (launchPending != null) {
+            pendingAllowedPackage = null
+            suppressOverlayUntil = 0L
+        }
+
+        if (
+            isWindowTransition &&
+            !eventPackage.isNullOrBlank() &&
+            eventPackage in allowedPackages
+        ) {
+            trustedAllowedPackage = eventPackage
+            trustedAllowedUntil = nowElapsed + ALLOWED_SETTLE_MS
+            hideOverlay()
+            return
+        }
+
+        // After Android reports an allowed app, trust that fresh transition for
+        // a short settle window. Watchdog UsageStats can lag behind app startup
+        // and previously recreated the overlay over the allowed app.
+        if (
+            event == null &&
+            trustedAllowedPackage != null &&
+            nowElapsed < trustedAllowedUntil
+        ) {
+            hideOverlay()
+            return
+        }
+
+        if (nowElapsed >= trustedAllowedUntil) {
+            trustedAllowedPackage = null
+            trustedAllowedUntil = 0L
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
@@ -474,11 +516,15 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun launchAllowed(app: InstalledApp) {
         pendingAllowedPackage = app.packageName
+        trustedAllowedPackage = null
+        trustedAllowedUntil = 0L
         suppressOverlayUntil = SystemClock.elapsedRealtime() + LAUNCH_GRACE_MS
         hideOverlay()
 
         if (!appsRepository.launch(app)) {
             pendingAllowedPackage = null
+            trustedAllowedPackage = null
+            trustedAllowedUntil = 0L
             suppressOverlayUntil = 0L
             enforceCurrentState()
         }
@@ -551,6 +597,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val LAUNCH_GRACE_MS = 1_200L
+        private const val ALLOWED_SETTLE_MS = 1_800L
         private const val RECENTS_RETURN_DELAY_MS = 120L
         private const val BACK_RETURN_DELAY_MS = 180L
         private val RECENTS_HINTS = listOf(
