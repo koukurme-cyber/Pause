@@ -169,6 +169,7 @@ for i in $(seq -w 1 16); do
       head -n 80 || true
   } > "$ARTIFACT_DIR/power-sample-$i.txt"
   adb exec-out screencap -p > "$ARTIFACT_DIR/power-sample-$i.png" 2>/dev/null || true
+  adb shell dumpsys accessibility > "$ARTIFACT_DIR/power-sample-$i-accessibility.txt" 2>/dev/null || true
   sleep 0.12
 done
 
