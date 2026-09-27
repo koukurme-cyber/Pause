@@ -188,18 +188,22 @@ class PauseAccessibilityService : AccessibilityService() {
             return SYSTEM_UI_PACKAGE
         }
 
-        return windows.asSequence()
+        val visibleSystemUi = windows.asSequence()
             .filter { it.isActive || it.isFocused }
-            .mapNotNull { window ->
-                val rootPackage = window.root?.packageName?.toString()
-                when {
-                    window.type == AccessibilityWindowInfo.TYPE_SYSTEM ->
-                        rootPackage ?: SYSTEM_UI_PACKAGE
-                    rootPackage == SYSTEM_UI_PACKAGE -> SYSTEM_UI_PACKAGE
-                    else -> null
-                }
-            }
-            .firstOrNull()
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull { it == SYSTEM_UI_PACKAGE }
+
+        if (visibleSystemUi != null) return SYSTEM_UI_PACKAGE
+
+        // VoiceInteractionSession and OEM power surfaces may lose Accessibility
+        // focus as soon as our own overlay is added. Their TYPE_SYSTEM window
+        // still remains in the interactive-window list, so detect that type even
+        // without isActive/isFocused. Exclude ordinary SystemUI chrome here; it
+        // is handled above only while actually active/focused.
+        return windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_SYSTEM }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull { it != SYSTEM_UI_PACKAGE }
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
