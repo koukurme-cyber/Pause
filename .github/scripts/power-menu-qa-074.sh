@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Dedicated capture for long-press Power / global actions flicker.
 set -Eeuo pipefail
 
 PKG="ru.pauza.app"
