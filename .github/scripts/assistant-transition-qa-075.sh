@@ -126,13 +126,10 @@ adb push /tmp/pause_store.xml /data/local/tmp/pause_store.xml >/dev/null
 adb shell chmod 644 /data/local/tmp/pause_store.xml
 adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
 
-adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
-adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
-adb shell settings --user 0 put secure accessibility_enabled 1
 wait_for_accessibility_bound
 wait_for_pause_foreground "initial"
-sleep 1.5
+sleep 2.0
 
 adb shell uiautomator dump /sdcard/active-before-assistant.xml >/dev/null 2>&1 || true
 adb exec-out cat /sdcard/active-before-assistant.xml > "$ARTIFACT_DIR/active-before-assistant.xml" 2>/dev/null || true
