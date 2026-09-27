@@ -131,8 +131,7 @@ class PauseAccessibilityService : AccessibilityService() {
             val unknownTransientStillPresent =
                 transientSystemPackage == UNKNOWN_SYSTEM_SURFACE &&
                     windows.any {
-                        it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
-                            it.taskId == AccessibilityWindowInfo.UNDEFINED_WINDOW_ID
+                        it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE
                     }
 
             val sameTransientSurface =
@@ -209,7 +208,6 @@ class PauseAccessibilityService : AccessibilityService() {
         // which is early enough to avoid creating our own blocking overlay.
         val activeUnknownSystemSurface = windows.firstOrNull {
             it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
-                it.taskId == AccessibilityWindowInfo.UNDEFINED_WINDOW_ID &&
                 (it.isActive || it.isFocused)
         }
         if (activeUnknownSystemSurface != null) {
