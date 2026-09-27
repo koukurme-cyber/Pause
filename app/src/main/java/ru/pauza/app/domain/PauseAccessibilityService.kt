@@ -128,10 +128,18 @@ class PauseAccessibilityService : AccessibilityService() {
                 event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
 
         if (nowElapsed < transientSystemUntil) {
+            val unknownTransientStillPresent =
+                transientSystemPackage == UNKNOWN_SYSTEM_SURFACE &&
+                    windows.any {
+                        it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
+                            it.taskId == AccessibilityWindowInfo.UNDEFINED_WINDOW_ID
+                    }
+
             val sameTransientSurface =
                 eventPackage.isNullOrBlank() ||
                     eventPackage == transientSystemPackage ||
-                    eventPackage == SYSTEM_UI_PACKAGE
+                    eventPackage == SYSTEM_UI_PACKAGE ||
+                    unknownTransientStillPresent
 
             if (!isWindowTransition || sameTransientSurface) {
                 hideOverlay()
@@ -195,11 +203,24 @@ class PauseAccessibilityService : AccessibilityService() {
 
         if (visibleSystemUi != null) return SYSTEM_UI_PACKAGE
 
-        // VoiceInteractionSession and OEM power surfaces may lose Accessibility
-        // focus as soon as our own overlay is added. Their TYPE_SYSTEM window
-        // still remains in the interactive-window list, so detect that type even
-        // without isActive/isFocused. Exclude ordinary SystemUI chrome here; it
-        // is handled above only while actually active/focused.
+        // Android 15 exposes VoiceInteractionSession (WindowManager type 2031)
+        // through AccessibilityWindowInfo as UNKNOWN (-1), taskId=-1. This
+        // window becomes active/focused before the Assistant surface is drawn,
+        // which is early enough to avoid creating our own blocking overlay.
+        val activeUnknownSystemSurface = windows.firstOrNull {
+            it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
+                it.taskId == AccessibilityWindowInfo.UNDEFINED_WINDOW_ID &&
+                (it.isActive || it.isFocused)
+        }
+        if (activeUnknownSystemSurface != null) {
+            return eventPackage
+                ?.takeIf { it != packageName }
+                ?: UNKNOWN_SYSTEM_SURFACE
+        }
+
+        // Some OEM transient surfaces are reported as TYPE_SYSTEM with a rooted
+        // package. Do not require focus here because our own accessibility
+        // overlay can briefly steal it.
         return windows.asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_SYSTEM }
             .mapNotNull { it.root?.packageName?.toString() }
@@ -318,6 +339,8 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
         private const val TRANSIENT_SYSTEM_GRACE_MS = 1_200L
+        private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
+        private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
     }
 }
 
