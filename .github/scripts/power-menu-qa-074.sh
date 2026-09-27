@@ -56,6 +56,11 @@ adb install -r "$APK"
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
 adb shell settings put global hide_error_dialogs 1 || true
 adb shell settings put secure immersive_mode_confirmations confirmed || true
+# Android 15 Pixel images default long-press Power to Assistant. Force the
+# platform GLOBAL_ACTIONS behavior (1) so this run exercises the actual
+# power/restart menu the user reported.
+adb shell settings put global power_button_long_press 1 || true
+adb shell settings get global power_button_long_press > "$ARTIFACT_DIR/power-button-setting.txt" || true
 
 END_MS=$(( $(date +%s%3N) + 15 * 60 * 1000 ))
 cat > /tmp/pause_store.xml <<EOF
@@ -84,6 +89,11 @@ adb shell am start -W -n "$ACTIVITY" >/dev/null
 wait_for_pause_foreground "initial"
 sleep 1
 
+# Remove any first-boot Launcher ANR dialog so it does not contaminate the capture.
+if adb shell dumpsys window windows 2>/dev/null | grep -Fq "Application Not Responding: com.google.android.apps.nexuslauncher"; then
+  adb shell input keyevent KEYCODE_BACK || true
+  sleep 1
+fi
 adb exec-out screencap -p > "$ARTIFACT_DIR/before-power.png"
 adb shell dumpsys window windows > "$ARTIFACT_DIR/before-power-windows.txt"
 adb shell uiautomator dump /sdcard/before-power.xml >/dev/null 2>&1 || true
