@@ -2,9 +2,7 @@ package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
-import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -12,7 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -33,11 +30,6 @@ class PauseAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
-    private val voiceInteractionPackage by lazy {
-        Settings.Secure.getString(contentResolver, "voice_interaction_service")
-            ?.let(ComponentName::unflattenFromString)
-            ?.packageName
-    }
 
     private val launcherPackages by lazy {
         val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -142,22 +134,42 @@ class PauseAccessibilityService : AccessibilityService() {
                         it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE
                     }
 
-            val sameTransientSurface =
-                eventPackage.isNullOrBlank() ||
-                    eventPackage == transientSystemPackage ||
-                    eventPackage == SYSTEM_UI_PACKAGE ||
-                    unknownTransientStillPresent
+            val activeApplicationPackage = windows.asSequence()
+                .filter {
+                    it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                        (it.isActive || it.isFocused)
+                }
+                .mapNotNull { it.root?.packageName?.toString() }
+                .firstOrNull()
 
-            if (!isWindowTransition || sameTransientSurface) {
-                hideOverlay()
-                return
+            val transitionedToApplication =
+                isWindowTransition &&
+                    !eventPackage.isNullOrBlank() &&
+                    activeApplicationPackage == eventPackage &&
+                    eventPackage != packageName &&
+                    eventPackage != SYSTEM_UI_PACKAGE
+
+            if (transitionedToApplication) {
+                // A real application became active: drop the transient-system
+                // latch immediately, so Home, Settings and other apps are still
+                // evaluated and blocked without waiting for the grace period.
+                transientSystemPackage = null
+                transientSystemUntil = 0L
+            } else {
+                val sameTransientSurface =
+                    eventPackage.isNullOrBlank() ||
+                        eventPackage == transientSystemPackage ||
+                        eventPackage == SYSTEM_UI_PACKAGE ||
+                        unknownTransientStillPresent
+
+                if (!isWindowTransition || sameTransientSurface) {
+                    hideOverlay()
+                    return
+                }
+
+                transientSystemPackage = null
+                transientSystemUntil = 0L
             }
-
-            // A real transition to another application (including Home) ends
-            // the latch immediately, so forbidden apps are still blocked without
-            // waiting for the grace period to expire.
-            transientSystemPackage = null
-            transientSystemUntil = 0L
         } else {
             transientSystemPackage = null
             transientSystemUntil = 0L
@@ -193,61 +205,44 @@ class PauseAccessibilityService : AccessibilityService() {
         event: AccessibilityEvent?,
     ): String? {
         val eventPackage = event?.packageName?.toString()
-        val isWindowTransition =
-            event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-
         if (
-            isWindowTransition &&
+            eventPackage == SYSTEM_UI_PACKAGE &&
             (
-                eventPackage == SYSTEM_UI_PACKAGE ||
-                    eventPackage == voiceInteractionPackage
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
                 )
         ) {
-            return eventPackage
+            return SYSTEM_UI_PACKAGE
         }
 
-        val candidateFallback =
-            eventPackage ?: transientSystemPackage ?: voiceInteractionPackage
-
-        return windows.asSequence()
+        val visibleSystemUi = windows.asSequence()
             .filter { it.isActive || it.isFocused }
-            .mapNotNull { window ->
-                val rootPackage = window.root?.packageName?.toString()
-                val candidate = rootPackage ?: candidateFallback
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull { it == SYSTEM_UI_PACKAGE }
 
-                when {
-                    rootPackage == SYSTEM_UI_PACKAGE -> SYSTEM_UI_PACKAGE
+        if (visibleSystemUi != null) return SYSTEM_UI_PACKAGE
 
-                    window.type == AccessibilityWindowInfo.TYPE_SYSTEM &&
-                        isTrustedSystemSurfacePackage(candidate) -> candidate
-
-                    window.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
-                        isTrustedSystemSurfacePackage(candidate) -> candidate
-
-                    else -> null
-                }
-            }
-            .firstOrNull()
-    }
-
-    private fun isTrustedSystemSurfacePackage(candidate: String?): Boolean {
-        if (candidate.isNullOrBlank()) return false
-        if (
-            candidate == SYSTEM_UI_PACKAGE ||
-            candidate == voiceInteractionPackage
-        ) {
-            return true
+        // Android 15 exposes VoiceInteractionSession (WindowManager type 2031)
+        // through AccessibilityWindowInfo as UNKNOWN (-1), taskId=-1. This
+        // window becomes active/focused before the Assistant surface is drawn,
+        // which is early enough to avoid creating our own blocking overlay.
+        val activeUnknownSystemSurface = windows.firstOrNull {
+            it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
+                (it.isActive || it.isFocused)
+        }
+        if (activeUnknownSystemSurface != null) {
+            return eventPackage
+                ?.takeIf { it != packageName }
+                ?: UNKNOWN_SYSTEM_SURFACE
         }
 
-        val info = runCatching {
-            packageManager.getApplicationInfo(candidate, 0)
-        }.getOrNull() ?: return false
-
-        return (
-            info.flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
-                info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
-            )
+        // Some OEM transient surfaces are reported as TYPE_SYSTEM with a rooted
+        // package. Do not require focus here because our own accessibility
+        // overlay can briefly steal it.
+        return windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_SYSTEM }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull { it != SYSTEM_UI_PACKAGE }
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -358,11 +353,10 @@ class PauseAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
-        private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
-        private const val TRANSIENT_SYSTEM_GRACE_MS = 1_200L
+        private const val TRANSIENT_SYSTEM_GRACE_MS = 12_000L
         private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
     }
