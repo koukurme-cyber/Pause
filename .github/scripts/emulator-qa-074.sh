@@ -167,7 +167,8 @@ assert_timer_near_expected() {
   local expected
   local delta
   actual="$(timer_seconds "$value")" || fail "$label: cannot parse timer '$value'"
-  expected=$(( (END_MS - $(date +%s%3N)) / 1000 ))
+  DEVICE_NOW_MS="$(adb shell date +%s%3N 2>/dev/null | tr -d '\r')"
+  expected=$(( (END_MS - DEVICE_NOW_MS) / 1000 ))
   if [ "$expected" -lt 0 ]; then
     expected=0
   fi
@@ -193,7 +194,7 @@ adb shell am force-stop com.google.android.apps.nexuslauncher || true
 adb shell input keyevent KEYCODE_HOME || true
 sleep 2
 
-END_MS=$(( $(date +%s%3N) + 15 * 60 * 1000 ))
+END_MS=$(( $(adb shell date +%s%3N | tr -d '\r') + 15 * 60 * 1000 ))
 cat > /tmp/pause_store.xml <<EOF
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
