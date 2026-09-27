@@ -128,6 +128,8 @@ adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/sh
 
 adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
+adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+adb shell settings --user 0 put secure accessibility_enabled 1
 wait_for_accessibility_bound
 wait_for_pause_foreground "initial"
 sleep 1.5
