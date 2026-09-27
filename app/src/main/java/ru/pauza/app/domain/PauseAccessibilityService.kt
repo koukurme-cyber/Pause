@@ -46,6 +46,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
+    private var transientSystemPackage: String? = null
+    private var transientSystemUntil = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
 
@@ -106,13 +108,44 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Transient Android system surfaces (power menu, shade, Recents, etc.)
-        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
-        // Once the overlay closes, normal foreground enforcement resumes and any
-        // disallowed app selected from it is caught immediately.
-        if (hasActiveSystemUiSurface(event)) {
+        // Power/global-actions and voice-assistant surfaces are system windows,
+        // even when their root belongs to another package (for example the Google
+        // Assistant host). Treat the window type as authoritative and latch its
+        // package briefly so our own accessibility overlay cannot steal focus and
+        // start an overlay/MainActivity ping-pong loop.
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val transientPackage = activeTransientSystemSurfacePackage(event)
+        if (transientPackage != null) {
+            transientSystemPackage = transientPackage
+            transientSystemUntil = nowElapsed + TRANSIENT_SYSTEM_GRACE_MS
             hideOverlay()
             return
+        }
+
+        val eventPackage = event?.packageName?.toString()
+        val isWindowTransition =
+            event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+
+        if (nowElapsed < transientSystemUntil) {
+            val sameTransientSurface =
+                eventPackage.isNullOrBlank() ||
+                    eventPackage == transientSystemPackage ||
+                    eventPackage == SYSTEM_UI_PACKAGE
+
+            if (!isWindowTransition || sameTransientSurface) {
+                hideOverlay()
+                return
+            }
+
+            // A real transition to another application (including Home) ends
+            // the latch immediately, so forbidden apps are still blocked without
+            // waiting for the grace period to expire.
+            transientSystemPackage = null
+            transientSystemUntil = 0L
+        } else {
+            transientSystemPackage = null
+            transientSystemUntil = 0L
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
@@ -141,7 +174,9 @@ class PauseAccessibilityService : AccessibilityService() {
         returnToPause()
     }
 
-    private fun hasActiveSystemUiSurface(event: AccessibilityEvent?): Boolean {
+    private fun activeTransientSystemSurfacePackage(
+        event: AccessibilityEvent?,
+    ): String? {
         val eventPackage = event?.packageName?.toString()
         if (
             eventPackage == SYSTEM_UI_PACKAGE &&
@@ -150,13 +185,21 @@ class PauseAccessibilityService : AccessibilityService() {
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
                 )
         ) {
-            return true
+            return SYSTEM_UI_PACKAGE
         }
 
         return windows.asSequence()
             .filter { it.isActive || it.isFocused }
-            .mapNotNull { it.root?.packageName?.toString() }
-            .any { it == SYSTEM_UI_PACKAGE }
+            .mapNotNull { window ->
+                val rootPackage = window.root?.packageName?.toString()
+                when {
+                    window.type == AccessibilityWindowInfo.TYPE_SYSTEM ->
+                        rootPackage ?: SYSTEM_UI_PACKAGE
+                    rootPackage == SYSTEM_UI_PACKAGE -> SYSTEM_UI_PACKAGE
+                    else -> null
+                }
+            }
+            .firstOrNull()
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
@@ -270,6 +313,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
+        private const val TRANSIENT_SYSTEM_GRACE_MS = 1_200L
     }
 }
 
