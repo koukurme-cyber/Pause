@@ -226,11 +226,18 @@ class PauseAccessibilityService : AccessibilityService() {
         // through AccessibilityWindowInfo as UNKNOWN (-1), taskId=-1. This
         // window becomes active/focused before the Assistant surface is drawn,
         // which is early enough to avoid creating our own blocking overlay.
-        val activeUnknownSystemSurface = windows.firstOrNull {
+        val unknownSystemSurface = windows.firstOrNull {
             it.type == UNKNOWN_ACCESSIBILITY_WINDOW_TYPE &&
-                (it.isActive || it.isFocused)
+                (
+                    it.isActive ||
+                        it.isFocused ||
+                        (
+                            isWindowTransitionEvent(event) &&
+                                eventPackage != packageName
+                            )
+                    )
         }
-        if (activeUnknownSystemSurface != null) {
+        if (unknownSystemSurface != null) {
             return eventPackage
                 ?.takeIf { it != packageName }
                 ?: UNKNOWN_SYSTEM_SURFACE
@@ -244,6 +251,10 @@ class PauseAccessibilityService : AccessibilityService() {
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull { it != SYSTEM_UI_PACKAGE }
     }
+
+    private fun isWindowTransitionEvent(event: AccessibilityEvent?): Boolean =
+        event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
         // Primary detector: Android Usage Access. Unlike Accessibility windows,
