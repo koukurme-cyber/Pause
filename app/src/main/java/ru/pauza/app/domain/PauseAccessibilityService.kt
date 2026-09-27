@@ -106,6 +106,15 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Transient Android system surfaces (power menu, shade, Recents, etc.)
+        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
+        // Once the overlay closes, normal foreground enforcement resumes and any
+        // disallowed app selected from it is caught immediately.
+        if (hasActiveSystemUiSurface(event)) {
+            hideOverlay()
+            return
+        }
+
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
         // System UI itself is allowed, but a launcher is not: pressing Home may
@@ -130,6 +139,24 @@ class PauseAccessibilityService : AccessibilityService() {
 
         showOverlay(end)
         returnToPause()
+    }
+
+    private fun hasActiveSystemUiSurface(event: AccessibilityEvent?): Boolean {
+        val eventPackage = event?.packageName?.toString()
+        if (
+            eventPackage == SYSTEM_UI_PACKAGE &&
+            (
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+                )
+        ) {
+            return true
+        }
+
+        return windows.asSequence()
+            .filter { it.isActive || it.isFocused }
+            .mapNotNull { it.root?.packageName?.toString() }
+            .any { it == SYSTEM_UI_PACKAGE }
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
