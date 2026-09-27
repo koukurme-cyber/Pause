@@ -126,8 +126,26 @@ adb push /tmp/pause_store.xml /data/local/tmp/pause_store.xml >/dev/null
 adb shell chmod 644 /data/local/tmp/pause_store.xml
 adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
 
+adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
-wait_for_accessibility_bound
+
+SERVICE_READY=0
+for attempt in $(seq 1 24); do
+  adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+  adb shell settings --user 0 put secure accessibility_enabled 1
+  sleep 0.5
+  if adb shell dumpsys accessibility 2>/dev/null |
+      grep -A6 "Bound services:" |
+      grep -Fq "PauseAccessibilityService"; then
+    SERVICE_READY=1
+    break
+  fi
+done
+if [ "$SERVICE_READY" -ne 1 ]; then
+  fail "Pause accessibility service is not bound after active-session restart"
+fi
+
+adb shell am start -W -n "$ACTIVITY" >/dev/null
 wait_for_pause_foreground "initial"
 sleep 2.0
 
