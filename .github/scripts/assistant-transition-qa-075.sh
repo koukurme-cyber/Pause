@@ -145,15 +145,25 @@ if [ "$SERVICE_READY" -ne 1 ]; then
   fail "Pause accessibility service is not bound after active-session restart"
 fi
 
-adb shell am start -W -n "$ACTIVITY" >/dev/null
-wait_for_pause_foreground "initial"
-sleep 2.0
-
-adb shell uiautomator dump /sdcard/active-before-assistant.xml >/dev/null 2>&1 || true
-adb exec-out cat /sdcard/active-before-assistant.xml > "$ARTIFACT_DIR/active-before-assistant.xml" 2>/dev/null || true
-if ! grep -Eq '[0-9]{2}:[0-9]{2}:[0-9]{2}' "$ARTIFACT_DIR/active-before-assistant.xml"; then
+ACTIVE_READY=0
+for attempt in $(seq 1 20); do
+  adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+  adb shell settings --user 0 put secure accessibility_enabled 1
+  adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
+  adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1 || true
+  sleep 0.75
+  adb shell uiautomator dump /sdcard/active-before-assistant.xml >/dev/null 2>&1 || true
+  adb exec-out cat /sdcard/active-before-assistant.xml > "$ARTIFACT_DIR/active-before-assistant.xml" 2>/dev/null || true
+  if grep -Eq '[0-9]{2}:[0-9]{2}:[0-9]{2}' "$ARTIFACT_DIR/active-before-assistant.xml"; then
+    ACTIVE_READY=1
+    break
+  fi
+done
+if [ "$ACTIVE_READY" -ne 1 ]; then
   fail "active Pause timer is not present before Assistant transition"
 fi
+
+wait_for_pause_foreground "initial"
 
 # Remove any first-boot Launcher ANR dialog so it does not contaminate the capture.
 if adb shell dumpsys window windows 2>/dev/null | grep -Fq "Application Not Responding: com.google.android.apps.nexuslauncher"; then
