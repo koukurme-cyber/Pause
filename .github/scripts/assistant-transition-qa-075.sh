@@ -96,9 +96,47 @@ done
 if [ "$SERVICE_READY" -ne 1 ]; then
   fail "Pause accessibility service is not bound after retries"
 fi
+
+USAGE_READY=0
+for attempt in $(seq 1 20); do
+  adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
+  USAGE_STATE="$(adb shell cmd appops get "$PKG" GET_USAGE_STATS 2>/dev/null || true)"
+  if echo "$USAGE_STATE" | grep -Fq "GET_USAGE_STATS: allow"; then
+    USAGE_READY=1
+    break
+  fi
+  sleep 0.5
+done
+if [ "$USAGE_READY" -ne 1 ]; then
+  fail "Usage Access app-op did not become allowed"
+fi
+
+# Re-assert the deterministic active session only after permissions are ready.
+END_MS=$(( $(adb shell date +%s%3N | tr -d '\r') + 15 * 60 * 1000 ))
+cat > /tmp/pause_store.xml <<EOF
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="session_end_epoch_ms" value="$END_MS" />
+    <boolean name="first_setup_completed" value="true" />
+    <boolean name="restricted_settings_confirmed" value="true" />
+    <boolean name="setup_checklist_completed" value="true" />
+</map>
+EOF
+adb push /tmp/pause_store.xml /data/local/tmp/pause_store.xml >/dev/null
+adb shell chmod 644 /data/local/tmp/pause_store.xml
+adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+
+adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
+wait_for_accessibility_bound
 wait_for_pause_foreground "initial"
-sleep 1
+sleep 1.5
+
+adb shell uiautomator dump /sdcard/active-before-assistant.xml >/dev/null 2>&1 || true
+adb exec-out cat /sdcard/active-before-assistant.xml > "$ARTIFACT_DIR/active-before-assistant.xml" 2>/dev/null || true
+if ! grep -Eq '[0-9]{2}:[0-9]{2}:[0-9]{2}' "$ARTIFACT_DIR/active-before-assistant.xml"; then
+  fail "active Pause timer is not present before Assistant transition"
+fi
 
 # Remove any first-boot Launcher ANR dialog so it does not contaminate the capture.
 if adb shell dumpsys window windows 2>/dev/null | grep -Fq "Application Not Responding: com.google.android.apps.nexuslauncher"; then
