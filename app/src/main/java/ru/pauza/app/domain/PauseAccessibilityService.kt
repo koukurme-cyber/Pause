@@ -46,7 +46,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
-    private var bootRecoveryPending = false
+    private var bootRecoveryEligible = false
     private var bootResumeAt = 0L
     private var transientSystemPackage: String? = null
     private var transientSystemUntil = 0L
@@ -66,11 +66,13 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
 
-        val end = store.sessionEndEpochMs
-        bootRecoveryPending =
-            end > System.currentTimeMillis() &&
-                SystemClock.elapsedRealtime() <= BOOT_RECOVERY_WINDOW_MS
+        val uptime = SystemClock.elapsedRealtime()
+        bootRecoveryEligible = uptime <= BOOT_RECOVERY_WINDOW_MS
         bootResumeAt = 0L
+        Log.i(
+            "PauseBootRecovery",
+            "serviceConnected uptimeMs=$uptime eligible=$bootRecoveryEligible sessionEnd=${store.sessionEndEpochMs}"
+        )
 
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
@@ -90,8 +92,15 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
-        if (end <= 0L || System.currentTimeMillis() >= end) {
-            bootRecoveryPending = false
+        val nowWall = System.currentTimeMillis()
+        val nowElapsed = SystemClock.elapsedRealtime()
+
+        if (bootRecoveryEligible && nowElapsed > BOOT_RECOVERY_WINDOW_MS) {
+            bootRecoveryEligible = false
+            bootResumeAt = 0L
+        }
+
+        if (end <= 0L || nowWall >= end) {
             bootResumeAt = 0L
             hideOverlay()
             return
@@ -103,32 +112,49 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!screenInteractive || deviceLocked) {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
-            if (bootRecoveryPending) {
+            if (bootRecoveryEligible) {
                 bootResumeAt = 0L
             }
             hideOverlay()
             return
         }
 
-        if (bootRecoveryPending) {
-            val nowElapsed = SystemClock.elapsedRealtime()
+        if (bootRecoveryEligible) {
+            val activeApplicationPackage = windows.asSequence()
+                .filter {
+                    it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                        (it.isActive || it.isFocused)
+                }
+                .mapNotNull { it.root?.packageName?.toString() }
+                .firstOrNull()
 
-            if (bootResumeAt == 0L) {
-                bootResumeAt = nowElapsed + BOOT_RESUME_GRACE_MS
-                hideOverlay()
+            if (activeApplicationPackage == packageName) {
+                bootRecoveryEligible = false
+                bootResumeAt = 0L
+                Log.i("PauseBootRecovery", "Pause already foreground; boot fast-path not needed")
+            } else {
+                if (bootResumeAt == 0L) {
+                    bootResumeAt = nowElapsed + BOOT_RESUME_GRACE_MS
+                    Log.i(
+                        "PauseBootRecovery",
+                        "active session visible after boot; scheduling resume in ${BOOT_RESUME_GRACE_MS}ms"
+                    )
+                    hideOverlay()
+                    return
+                }
+
+                if (nowElapsed < bootResumeAt) {
+                    hideOverlay()
+                    return
+                }
+
+                bootRecoveryEligible = false
+                bootResumeAt = 0L
+                Log.i("PauseBootRecovery", "forcing Pause foreground after boot")
+                showOverlay(end)
+                returnToPause()
                 return
             }
-
-            if (nowElapsed < bootResumeAt) {
-                hideOverlay()
-                return
-            }
-
-            bootRecoveryPending = false
-            bootResumeAt = 0L
-            showOverlay(end)
-            returnToPause()
-            return
         }
 
         if (wasUnavailableForUnlock) {
@@ -148,7 +174,6 @@ class PauseAccessibilityService : AccessibilityService() {
         // Assistant host). Treat the window type as authoritative and latch its
         // package briefly so our own accessibility overlay cannot steal focus and
         // start an overlay/MainActivity ping-pong loop.
-        val nowElapsed = SystemClock.elapsedRealtime()
         val transientPackage = activeTransientSystemSurfacePackage(event)
         if (transientPackage != null) {
             transientSystemPackage = transientPackage
