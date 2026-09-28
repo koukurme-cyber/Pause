@@ -46,6 +46,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
+    private var bootRecoveryPending = false
+    private var bootResumeAt = 0L
     private var transientSystemPackage: String? = null
     private var transientSystemUntil = 0L
     private var overlay: View? = null
@@ -63,6 +65,13 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+
+        val end = store.sessionEndEpochMs
+        bootRecoveryPending =
+            end > System.currentTimeMillis() &&
+                SystemClock.elapsedRealtime() <= BOOT_RECOVERY_WINDOW_MS
+        bootResumeAt = 0L
+
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -82,6 +91,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            bootRecoveryPending = false
+            bootResumeAt = 0L
             hideOverlay()
             return
         }
@@ -92,7 +103,31 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!screenInteractive || deviceLocked) {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
+            if (bootRecoveryPending) {
+                bootResumeAt = 0L
+            }
             hideOverlay()
+            return
+        }
+
+        if (bootRecoveryPending) {
+            val nowElapsed = SystemClock.elapsedRealtime()
+
+            if (bootResumeAt == 0L) {
+                bootResumeAt = nowElapsed + BOOT_RESUME_GRACE_MS
+                hideOverlay()
+                return
+            }
+
+            if (nowElapsed < bootResumeAt) {
+                hideOverlay()
+                return
+            }
+
+            bootRecoveryPending = false
+            bootResumeAt = 0L
+            showOverlay(end)
+            returnToPause()
             return
         }
 
@@ -366,7 +401,9 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
-        private const val UNLOCK_GRACE_MS = 250L
+        private const val UNLOCK_GRACE_MS = 1_000L
+        private const val BOOT_RESUME_GRACE_MS = 250L
+        private const val BOOT_RECOVERY_WINDOW_MS = 180_000L
         private const val TRANSIENT_SYSTEM_GRACE_MS = 12_000L
         private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
