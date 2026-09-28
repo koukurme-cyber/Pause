@@ -1,4 +1,5 @@
 name: Reboot Speed Compare 0.7.5 vs 0.7.6
+# paired-repeat: 1
 
 on:
   workflow_dispatch:
