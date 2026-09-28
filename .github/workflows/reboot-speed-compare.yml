@@ -10,6 +10,10 @@ on:
       - ".github/scripts/reboot-speed-qa.sh"
       - ".github/workflows/reboot-speed-compare.yml"
 
+concurrency:
+  group: pauza-reboot-speed-compare
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
