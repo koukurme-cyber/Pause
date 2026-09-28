@@ -366,7 +366,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
-        private const val UNLOCK_GRACE_MS = 1_000L
+        private const val UNLOCK_GRACE_MS = 250L
         private const val TRANSIENT_SYSTEM_GRACE_MS = 12_000L
         private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
