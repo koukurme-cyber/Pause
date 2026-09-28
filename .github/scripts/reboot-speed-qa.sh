@@ -56,19 +56,29 @@ adb shell chmod 644 /data/local/tmp/pause_store.xml
 adb shell run-as "$PKG" mkdir -p "/data/user/0/$PKG/shared_prefs"
 adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
 
-adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
-adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
-adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
-adb shell settings --user 0 put secure accessibility_enabled 1
+SERVICE_READY=0
+for attempt in $(seq 1 30); do
+  adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
+  adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
+  adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+  adb shell settings --user 0 put secure accessibility_enabled 1
+  adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1 || true
+  sleep 0.5
 
-adb shell am start -W -n "$ACTIVITY" >/dev/null
+  if accessibility_bound; then
+    SERVICE_READY=1
+    break
+  fi
+done
+[ "$SERVICE_READY" -eq 1 ] || fail "Accessibility not bound before reboot after retries"
+
+adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1 || true
 for _ in $(seq 1 60); do
-  if accessibility_bound && [ "$(foreground_package)" = "$PKG" ]; then
+  if [ "$(foreground_package)" = "$PKG" ]; then
     break
   fi
   sleep 0.25
 done
-accessibility_bound || fail "Accessibility not bound before reboot"
 [ "$(foreground_package)" = "$PKG" ] || fail "Pause not foreground before reboot"
 
 adb logcat -c || true
