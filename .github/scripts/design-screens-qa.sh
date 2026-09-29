@@ -47,6 +47,16 @@ adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIB
 adb shell settings --user 0 put secure accessibility_enabled 1
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
 
+# Accessibility on a cold AVD may take several seconds to bind.
+for _ in $(seq 1 40); do
+  if adb shell dumpsys accessibility 2>/dev/null | grep -A8 "Bound services:" | grep -Fq "PauseAccessibilityService"; then
+    break
+  fi
+  adb shell settings --user 0 put secure enabled_accessibility_services "$ACCESSIBILITY_COMPONENT"
+  adb shell settings --user 0 put secure accessibility_enabled 1
+  sleep 0.5
+done
+
 cat > /tmp/pause_store.xml <<EOF
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
@@ -61,7 +71,16 @@ adb shell run-as "$PKG" cp /data/local/tmp/pause_store.xml "/data/user/0/$PKG/sh
 
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$ACTIVITY" >/dev/null
-sleep 4
+sleep 2
+
+# Give the setup-state poll enough time to observe granted Usage Access + Accessibility.
+for _ in $(seq 1 20); do
+  dump_ui "$OUT/setup-check.xml"
+  if ! grep -q "Настройка Паузы" "$OUT/setup-check.xml" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
 adb exec-out screencap -p > "$OUT/01-setup.png"
 
 # Default duration is one hour, so moving to review is valid without changing the picker.
