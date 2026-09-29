@@ -3,7 +3,8 @@ package ru.pauza.app.data
 import android.content.Context
 
 class PauseStore(context: Context) {
-    private val prefs = context.getSharedPreferences("pause_store", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("pause_store", Context.MODE_PRIVATE)
 
     var selectedPackages: Set<String>
         get() = prefs.getStringSet(KEY_SELECTED, emptySet())?.toSet().orEmpty()
@@ -11,7 +12,10 @@ class PauseStore(context: Context) {
 
     var sessionEndEpochMs: Long
         get() = prefs.getLong(KEY_SESSION_END, 0L)
-        set(value) { prefs.edit().putLong(KEY_SESSION_END, value).apply() }
+        set(value) {
+            prefs.edit().putLong(KEY_SESSION_END, value).apply()
+            BootSessionStore.setSessionEndEpochMs(appContext, value)
+        }
 
     var firstSetupCompleted: Boolean
         get() = prefs.getBoolean(KEY_FIRST_SETUP_COMPLETED, false)
@@ -27,6 +31,7 @@ class PauseStore(context: Context) {
 
     fun clearSession() {
         prefs.edit().remove(KEY_SESSION_END).apply()
+        BootSessionStore.clearSession(appContext)
     }
 
     companion object {
