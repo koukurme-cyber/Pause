@@ -25,6 +25,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -1322,6 +1325,17 @@ private fun ActiveScreen(
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
+    val defaultFlingBehavior = ScrollableDefaults.flingBehavior()
+    val gentleFlingBehavior = remember(defaultFlingBehavior) {
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+                return with(defaultFlingBehavior) {
+                    performFling(initialVelocity * 0.5f)
+                }
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.pauza_active_concept_bg),
@@ -1470,7 +1484,8 @@ private fun ActiveScreen(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp),
-                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp)
+                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp),
+                flingBehavior = gentleFlingBehavior
             ) {
                 items(
                     items = shortcuts,
