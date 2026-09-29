@@ -295,8 +295,10 @@ private fun BrandHeader(
             )
             Text(
                 "Только нужное",
-                fontSize = if (compact) 13.sp else 15.sp,
-                color = PauseMuted
+                fontSize = if (compact) 12.sp else 14.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.6.sp,
+                color = Color(0xFF4F6657)
             )
         }
     }
@@ -873,12 +875,6 @@ private fun DurationPicker(
         }
     }
 
-    Spacer(Modifier.height(4.dp))
-    Text(
-        "От 1 минуты до 29 дней 23 часов 59 минут",
-        color = PauseMuted,
-        fontSize = 10.sp
-    )
 }
 
 @Composable
