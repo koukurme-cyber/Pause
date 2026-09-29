@@ -131,7 +131,7 @@ try:
 except Exception:
     raise SystemExit(1)
 
-pattern = re.compile(r"(?:(\d+)\s*дн\s*)?(\d{2}):(\d{2}):(\d{2})")
+pattern = re.compile(r"(?:(\d+)\s*дн\s*)?(?:(\d{2}):)?(\d{2}):(\d{2})")
 for node in root.iter("node"):
     for key in ("text", "content-desc"):
         value = node.attrib.get(key, "")
@@ -149,11 +149,11 @@ import re
 import sys
 
 value = sys.argv[1]
-m = re.search(r"(?:(\d+)\s*дн\s*)?(\d{2}):(\d{2}):(\d{2})", value)
+m = re.search(r"(?:(\d+)\s*дн\s*)?(?:(\d{2}):)?(\d{2}):(\d{2})", value)
 if not m:
     raise SystemExit(1)
 days = int(m.group(1) or 0)
-hours = int(m.group(2))
+hours = int(m.group(2) or 0)
 minutes = int(m.group(3))
 seconds = int(m.group(4))
 print(days * 86400 + hours * 3600 + minutes * 60 + seconds)
