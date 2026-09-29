@@ -7,6 +7,7 @@ on:
       - main
       - recovery-stable-0.7.4-timerfix
       - fix-systemui-transient-0.7.5
+      - design-red-safe-0.8.14-on-0.7.5
 
 concurrency:
   group: pauza-main-build
@@ -45,8 +46,8 @@ jobs:
       - name: Set release version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 67/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.7.5-systemui-fix"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 814/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.14-red-safe"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -57,12 +58,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.7.5-systemui-fix.apk
-          test -s Pauza-0.7.5-systemui-fix.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.14-red-safe.apk
+          test -s Pauza-0.8.14-red-safe.apk
 
-          if gh release view pauza-0.7.5-systemui-fix >/dev/null 2>&1; then
-            gh release upload pauza-0.7.5-systemui-fix Pauza-0.7.5-systemui-fix.apk --clobber
-            gh release edit pauza-0.7.5-systemui-fix --target "$GITHUB_SHA" --title "Пауза — 0.7.5 System UI fix" --notes "Built from the verified 0.7.4-timerfix baseline. The only application-code change is a guard against transient active System UI surfaces, intended to prevent overlay/MainActivity ping-pong during long-press Power and similar system transitions."
+          if gh release view pauza-0.8.14-red-safe >/dev/null 2>&1; then
+            gh release upload pauza-0.8.14-red-safe Pauza-0.8.14-red-safe.apk --clobber
+            gh release edit pauza-0.8.14-red-safe --target "$GITHUB_SHA" --title "Пауза — 0.8.14 Red Safe" --notes "Red background visual design based on visual-safe 0.8.14, running on stable 0.7.5-systemui-fix protection logic. Includes proven transparent system bars, raised app-list behavior, and system launcher icon sizing in active Pause."
           else
-            gh release create pauza-0.7.5-systemui-fix Pauza-0.7.5-systemui-fix.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.7.5 System UI fix" --notes "Built from the verified 0.7.4-timerfix baseline. The only application-code change is a guard against transient active System UI surfaces, intended to prevent overlay/MainActivity ping-pong during long-press Power and similar system transitions."
+            gh release create pauza-0.8.14-red-safe Pauza-0.8.14-red-safe.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.8.14 Red Safe" --notes "Red background visual design based on visual-safe 0.8.14, running on stable 0.7.5-systemui-fix protection logic. Includes proven transparent system bars, raised app-list behavior, and system launcher icon sizing in active Pause."
           fi
