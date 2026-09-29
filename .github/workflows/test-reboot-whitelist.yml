@@ -5,6 +5,10 @@ on:
     branches:
       - reboot-whitelist-refresh-0.8.31
 
+concurrency:
+  group: reboot-whitelist-refresh-test
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
