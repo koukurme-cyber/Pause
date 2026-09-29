@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import ru.pauza.app.BuildConfig
 import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
@@ -77,7 +78,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
-private enum class Screen { SETUP, REVIEW, ACTIVE }
+private enum class Screen { SETUP, SETTINGS, REVIEW, ACTIVE }
 private data class PauseDuration(
     val days: Int = 0,
     val hours: Int = 1,
@@ -174,6 +175,7 @@ fun PauseRoot(
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
     var duration by remember { mutableStateOf(PauseDuration()) }
+    var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
 
     val now = System.currentTimeMillis()
     var sessionEnd by remember {
@@ -213,7 +215,17 @@ fun PauseRoot(
                 store.selectedPackages = selected
             },
             onDuration = { duration = it },
+            onOpenSettings = { screen = Screen.SETTINGS },
             onContinue = { screen = Screen.REVIEW },
+        )
+
+        Screen.SETTINGS -> SettingsScreen(
+            testModeEnabled = testModeEnabled,
+            onTestModeChanged = { enabled ->
+                testModeEnabled = enabled
+                store.testModeEnabled = enabled
+            },
+            onBack = { screen = Screen.SETUP },
         )
 
         Screen.REVIEW -> ReviewScreen(
@@ -239,6 +251,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
+            testModeEnabled = testModeEnabled,
             onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
@@ -578,6 +591,7 @@ private fun SetupScreen(
     duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
+    onOpenSettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -617,7 +631,25 @@ private fun SetupScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
-            BrandHeader(compact = true)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrandHeader(
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Настройки",
+                        tint = Color.Unspecified
+                    )
+                }
+            }
 
             AnimatedVisibility(
                 visible = !listExpanded,
@@ -639,10 +671,10 @@ private fun SetupScreen(
                 Column {
                     Spacer(Modifier.height(7.dp))
                     Text(
-                        "Выберите длительность и доступные приложения.",
-                        color = Color(0xFF858B86),
+                        "Пауза помогает на время убрать лишнее. Выберите приложения, которые должны остаться доступными, и срок — до окончания таймера всё остальное будет заблокировано.",
+                        color = Color(0xFF737A75),
                         fontSize = 14.sp,
-                        lineHeight = 18.sp
+                        lineHeight = 19.sp
                     )
 
                     Spacer(Modifier.height(10.dp))
@@ -990,6 +1022,102 @@ private fun formatDaysWheel(value: Int): String {
 }
 
 @Composable
+private fun SettingsScreen(
+    testModeEnabled: Boolean,
+    onTestModeChanged: (Boolean) -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+
+    SoftScreenBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onBack,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "‹",
+                        fontSize = 34.sp,
+                        lineHeight = 34.sp,
+                        color = Color(0xFF4F5952)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Настройки",
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Тестовый режим",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Позволяет досрочно завершить активную Паузу семью касаниями по таймеру.",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Switch(
+                        checked = testModeEnabled,
+                        onCheckedChange = onTestModeChanged,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF36B34A),
+                            checkedBorderColor = Color(0xFF36B34A)
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                "Версия " + BuildConfig.VERSION_NAME,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                color = PauseMuted,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
 private fun ReviewScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
@@ -1112,6 +1240,7 @@ private fun ActiveScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     sessionEnd: Long,
+    testModeEnabled: Boolean,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
     onTapExit: () -> Unit,
@@ -1195,19 +1324,25 @@ private fun ActiveScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(
-                        interactionSource = timerTapInteraction,
-                        indication = null
-                    ) {
-                        val tapAt = SystemClock.elapsedRealtime()
-                        if (tapAt - lastTapAt > 3_000L) tapCount = 0
-                        lastTapAt = tapAt
-                        tapCount += 1
-                        if (tapCount >= 7) {
-                            tapCount = 0
-                            onTapExit()
+                    .then(
+                        if (testModeEnabled) {
+                            Modifier.clickable(
+                                interactionSource = timerTapInteraction,
+                                indication = null
+                            ) {
+                                val tapAt = SystemClock.elapsedRealtime()
+                                if (tapAt - lastTapAt > 3_000L) tapCount = 0
+                                lastTapAt = tapAt
+                                tapCount += 1
+                                if (tapCount >= 7) {
+                                    tapCount = 0
+                                    onTapExit()
+                                }
+                            }
+                        } else {
+                            Modifier
                         }
-                    },
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
                 ),
