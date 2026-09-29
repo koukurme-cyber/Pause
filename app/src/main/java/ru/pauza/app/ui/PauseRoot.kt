@@ -235,6 +235,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             duration = duration,
+            onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
@@ -1128,6 +1129,7 @@ private fun ReviewScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     duration: PauseDuration,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
 ) {
@@ -1144,21 +1146,32 @@ private fun ReviewScreen(
                 .navigationBarsPadding()
                 .padding(18.dp)
         ) {
-            BrandHeader(compact = true)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrandHeader(
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Настройки",
+                        tint = Color(0xFF263029),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(10.dp))
             Text(
                 "Проверьте перед запуском",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "После запуска будут работать только выбранные приложения. Список изменить нельзя до окончания таймера.",
-                color = Color(0xFFB3261E),
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.Medium
-            )
-
             Spacer(Modifier.height(10.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
@@ -1169,11 +1182,11 @@ private fun ReviewScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.Top
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(32.dp)
                                 .drawBehind {
                                     val triangle = Path().apply {
                                         moveTo(size.width / 2f, 0f)
@@ -1189,7 +1202,7 @@ private fun ReviewScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "?",
+                                "!",
                                 color = Color(0xFF5C4710),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -1197,18 +1210,23 @@ private fun ReviewScreen(
                             )
                         }
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Точно всё нужное оставили?",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "После запуска изменить время и список приложений нельзя.",
+                                color = Color(0xFF8E2B22),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
+                                color = PauseMuted,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
                     }
-                    Text(
-                        "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                        color = PauseMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
                 }
             }
 
