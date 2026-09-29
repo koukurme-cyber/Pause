@@ -205,6 +205,14 @@ fun PauseRoot(
         }
         apps = loaded.first
         alwaysApps = loaded.second
+
+        val validPackages = loaded.first.map { it.packageName }.toSet()
+        val cleanedSelected = selected.intersect(validPackages)
+        if (cleanedSelected != selected) {
+            selected = cleanedSelected
+            store.selectedPackages = cleanedSelected
+        }
+
         loading = false
     }
 
