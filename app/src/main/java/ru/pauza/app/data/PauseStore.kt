@@ -25,6 +25,10 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_SETUP_CHECKLIST_COMPLETED, false)
         set(value) { prefs.edit().putBoolean(KEY_SETUP_CHECKLIST_COMPLETED, value).apply() }
 
+    var testModeEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TEST_MODE_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_TEST_MODE_ENABLED, value).apply() }
+
     fun clearSession() {
         prefs.edit().remove(KEY_SESSION_END).apply()
     }
@@ -35,5 +39,6 @@ class PauseStore(context: Context) {
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
+        private const val KEY_TEST_MODE_ENABLED = "test_mode_enabled"
     }
 }
