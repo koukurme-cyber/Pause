@@ -641,12 +641,13 @@ private fun SetupScreen(
                 )
                 IconButton(
                     onClick = onOpenSettings,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_settings),
                         contentDescription = "Настройки",
-                        tint = Color.Unspecified
+                        tint = Color(0xFF263029),
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }
@@ -1094,9 +1095,15 @@ private fun SettingsScreen(
                         checked = testModeEnabled,
                         onCheckedChange = onTestModeChanged,
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                             checkedTrackColor = Color(0xFF36B34A),
-                            checkedBorderColor = Color(0xFF36B34A)
+                            checkedBorderColor = Color(0xFF36B34A),
+                            uncheckedThumbColor = PauseMuted,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                            uncheckedBorderColor = Color(0xFFCBD0C8),
+                            disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.62f),
+                            disabledCheckedTrackColor = Color(0xFF36B34A).copy(alpha = 0.42f),
+                            disabledCheckedBorderColor = Color(0xFF36B34A).copy(alpha = 0.32f),
                         )
                     )
                 }
