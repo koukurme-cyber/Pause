@@ -5,7 +5,7 @@ PKG="ru.pauza.app"
 ACTIVITY="$PKG/.MainActivity"
 ACCESSIBILITY_COMPONENT="$PKG/$PKG.domain.PauseAccessibilityService"
 APK="app/build/outputs/apk/debug/app-debug.apk"
-OUT="../design-screens"
+OUT="design-screens"
 mkdir -p "$OUT"
 
 foreground_package() {
