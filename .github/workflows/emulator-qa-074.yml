@@ -1,10 +1,11 @@
-name: Emulator QA 0.7.5 SystemUI fix
+name: Emulator QA red design 0.8.14
 
 on:
   workflow_dispatch:
   push:
     branches:
       - fix-systemui-transient-0.7.5
+      - design-red-safe-0.8.14-on-0.7.5
     paths:
       - "app/**"
       - ".github/scripts/emulator-qa-074.sh"
