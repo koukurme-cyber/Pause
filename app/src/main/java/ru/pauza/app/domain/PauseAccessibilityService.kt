@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
 import android.widget.TextView
 import ru.pauza.app.MainActivity
+import ru.pauza.app.data.BootSessionStore
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import java.util.Locale
@@ -46,6 +47,8 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastReturnAt = 0L
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
+    private var bootRecoveryPending = false
+    private var bootResumeAt = 0L
     private var transientSystemPackage: String? = null
     private var transientSystemUntil = 0L
     private var overlay: View? = null
@@ -63,6 +66,20 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+
+        val now = System.currentTimeMillis()
+        val uptime = SystemClock.elapsedRealtime()
+        val bootSessionEnd = BootSessionStore.sessionEndEpochMs(this)
+        bootRecoveryPending =
+            bootSessionEnd > now &&
+                uptime <= BOOT_RECOVERY_WINDOW_MS
+        bootResumeAt = 0L
+
+        Log.i(
+            "PauseBootRecovery",
+            "serviceConnected uptimeMs=$uptime pending=$bootRecoveryPending bootSessionEnd=$bootSessionEnd"
+        )
+
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -80,8 +97,14 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
-        val end = store.sessionEndEpochMs
+        val bootSessionEnd =
+            if (bootRecoveryPending) BootSessionStore.sessionEndEpochMs(this) else 0L
+        val end = runCatching { store.sessionEndEpochMs }
+            .getOrDefault(bootSessionEnd)
+
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            bootRecoveryPending = false
+            bootResumeAt = 0L
             hideOverlay()
             return
         }
@@ -92,8 +115,42 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!screenInteractive || deviceLocked) {
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
+            if (bootRecoveryPending) {
+                bootResumeAt = 0L
+            }
             hideOverlay()
             return
+        }
+
+        if (bootRecoveryPending) {
+            val nowElapsed = SystemClock.elapsedRealtime()
+
+            if (nowElapsed > BOOT_RECOVERY_WINDOW_MS) {
+                bootRecoveryPending = false
+                bootResumeAt = 0L
+            } else {
+                if (bootResumeAt == 0L) {
+                    bootResumeAt = nowElapsed + BOOT_RESUME_GRACE_MS
+                    Log.i(
+                        "PauseBootRecovery",
+                        "device unlocked; forcing Pause in ${BOOT_RESUME_GRACE_MS}ms"
+                    )
+                    hideOverlay()
+                    return
+                }
+
+                if (nowElapsed < bootResumeAt) {
+                    hideOverlay()
+                    return
+                }
+
+                bootRecoveryPending = false
+                bootResumeAt = 0L
+                Log.i("PauseBootRecovery", "forcing Pause foreground after boot")
+                showOverlay(end)
+                returnToPause()
+                return
+            }
         }
 
         if (wasUnavailableForUnlock) {
@@ -367,6 +424,8 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
+        private const val BOOT_RESUME_GRACE_MS = 250L
+        private const val BOOT_RECOVERY_WINDOW_MS = 180_000L
         private const val TRANSIENT_SYSTEM_GRACE_MS = 12_000L
         private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
