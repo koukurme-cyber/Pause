@@ -51,6 +51,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var transientSystemUntil = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var lastShortVideoBackAt = 0L
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -194,6 +195,18 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            if (
+                store.shortVideoBlockingEnabled &&
+                ShortVideoDetector.isInstagramReels(
+                    root = rootInActiveWindow,
+                    packageName = foregroundPackage
+                )
+            ) {
+                hideOverlay()
+                blockShortVideo()
+                return
+            }
+
             hideOverlay()
             return
         }
@@ -279,6 +292,13 @@ class PauseAccessibilityService : AccessibilityService() {
         if (!rootPackage.isNullOrBlank()) return rootPackage
 
         return event?.packageName?.toString()
+    }
+
+    private fun blockShortVideo() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastShortVideoBackAt < SHORT_VIDEO_BACK_DEBOUNCE_MS) return
+        lastShortVideoBackAt = now
+        performGlobalAction(GLOBAL_ACTION_BACK)
     }
 
     private fun returnToPause() {
@@ -383,6 +403,7 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val TRANSIENT_SYSTEM_GRACE_MS = 12_000L
         private const val UNKNOWN_ACCESSIBILITY_WINDOW_TYPE = -1
         private const val UNKNOWN_SYSTEM_SURFACE = "__pause_transient_system__"
+        private const val SHORT_VIDEO_BACK_DEBOUNCE_MS = 900L
     }
 }
 
