@@ -5,6 +5,10 @@ on:
     branches:
       - reboot-whitelist-redsafe-0.8.14-test
 
+concurrency:
+  group: redsafe-reboot-whitelist-test
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
