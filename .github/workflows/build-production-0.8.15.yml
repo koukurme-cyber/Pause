@@ -1,9 +1,9 @@
-name: Build Pauza 0.8.20 production
+name: Build Pauza 0.8.21 production
 
 on:
   push:
     branches:
-      - production-settings-0.8.20
+      - production-settings-0.8.21
 
 permissions:
   contents: read
@@ -37,8 +37,8 @@ jobs:
       - name: Set production version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 822/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.20"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 823/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.21"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -46,5 +46,5 @@ jobs:
       - name: Upload production APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.20
+          name: Pauza-0.8.21
           path: app/build/outputs/apk/release/app-release.apk
