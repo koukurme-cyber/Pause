@@ -184,6 +184,15 @@ fun PauseRoot(
     }
 
     LaunchedEffect(Unit) {
+        if (sessionEnd > System.currentTimeMillis()) {
+            val restored = withContext(Dispatchers.IO) {
+                appsRepository.loadAppsByPackages(selected) to appsRepository.loadAlwaysAllowedApps()
+            }
+            apps = restored.first
+            alwaysApps = restored.second
+            loading = false
+        }
+
         val loaded = withContext(Dispatchers.IO) {
             appsRepository.loadLaunchableApps() to appsRepository.loadAlwaysAllowedApps()
         }
