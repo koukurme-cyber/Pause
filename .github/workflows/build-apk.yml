@@ -1,4 +1,5 @@
 name: Build Pauza Android APK
+# 0.7.8 release trigger
 
 on:
   workflow_dispatch:
