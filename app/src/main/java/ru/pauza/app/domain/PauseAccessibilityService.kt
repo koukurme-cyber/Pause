@@ -47,7 +47,10 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var overlayGrid: GridLayout? = null
     private var overlaySessionEnd = 0L
+    private var restoredSelectedShortcuts = 0
+    private var shortcutRefreshAttempts = 0
     private var suppressOverlayUntil = 0L
     private var pendingAllowedPackage: String? = null
     private var tapCount = 0
@@ -59,6 +62,26 @@ class PauseAccessibilityService : AccessibilityService() {
                 enforceCurrentState()
             } finally {
                 handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+            }
+        }
+    }
+
+    private val shortcutRefresh = object : Runnable {
+        override fun run() {
+            if (overlay == null || !isSessionActive()) {
+                shortcutRefreshAttempts = 0
+                return
+            }
+
+            restoredSelectedShortcuts = populateOverlayShortcuts()
+            if (
+                restoredSelectedShortcuts < store.selectedPackages.size &&
+                shortcutRefreshAttempts < SHORTCUT_REFRESH_MAX_ATTEMPTS
+            ) {
+                shortcutRefreshAttempts += 1
+                handler.postDelayed(this, SHORTCUT_REFRESH_INTERVAL_MS)
+            } else {
+                shortcutRefreshAttempts = 0
             }
         }
     }
@@ -276,6 +299,11 @@ class PauseAccessibilityService : AccessibilityService() {
             overlay = root
             overlaySessionEnd = sessionEnd
             updateOverlayTimer(sessionEnd)
+            shortcutRefreshAttempts = 0
+            if (restoredSelectedShortcuts < store.selectedPackages.size) {
+                shortcutRefreshAttempts = 1
+                handler.postDelayed(shortcutRefresh, SHORTCUT_REFRESH_INTERVAL_MS)
+            }
         }
     }
 
@@ -411,7 +439,27 @@ class PauseAccessibilityService : AccessibilityService() {
             )
         )
 
-        currentShortcuts().forEach { app ->
+        overlayGrid = grid
+        restoredSelectedShortcuts = populateOverlayShortcuts()
+
+        return root
+    }
+
+    private fun currentShortcuts(): Pair<List<InstalledApp>, Int> {
+        val selected = store.selectedPackages
+        val always = appsRepository.loadAlwaysAllowedApps()
+        val chosen = appsRepository.loadAppsByPackages(selected)
+
+        return (always + chosen)
+            .distinctBy { it.launchType.name + ":" + it.packageName } to chosen.size
+    }
+
+    private fun populateOverlayShortcuts(): Int {
+        val grid = overlayGrid ?: return 0
+        val (shortcuts, restoredCount) = currentShortcuts()
+        grid.removeAllViews()
+
+        shortcuts.forEach { app ->
             grid.addView(
                 buildShortcut(app),
                 GridLayout.LayoutParams().apply {
@@ -423,16 +471,7 @@ class PauseAccessibilityService : AccessibilityService() {
             )
         }
 
-        return root
-    }
-
-    private fun currentShortcuts(): List<InstalledApp> {
-        val selected = store.selectedPackages
-        val always = appsRepository.loadAlwaysAllowedApps()
-        val chosen = appsRepository.loadLaunchableApps().filter { it.packageName in selected }
-
-        return (always + chosen)
-            .distinctBy { it.launchType.name + ":" + it.packageName }
+        return restoredCount
     }
 
     private fun buildShortcut(app: InstalledApp): View {
@@ -515,10 +554,17 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun hideOverlay() {
-        val current = overlay ?: return
+        handler.removeCallbacks(shortcutRefresh)
+        shortcutRefreshAttempts = 0
+        restoredSelectedShortcuts = 0
+        val current = overlay ?: run {
+            overlayGrid = null
+            return
+        }
         runCatching { windowManager.removeView(current) }
         overlay = null
         overlayTimer = null
+        overlayGrid = null
         overlaySessionEnd = 0L
     }
 
@@ -553,6 +599,8 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val LAUNCH_GRACE_MS = 1_200L
         private const val RECENTS_RETURN_DELAY_MS = 120L
         private const val BACK_RETURN_DELAY_MS = 180L
+        private const val SHORTCUT_REFRESH_INTERVAL_MS = 1_500L
+        private const val SHORTCUT_REFRESH_MAX_ATTEMPTS = 8
         private val RECENTS_HINTS = listOf(
             "recents",
             "recent_apps",
