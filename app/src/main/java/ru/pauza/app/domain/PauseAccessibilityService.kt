@@ -63,6 +63,11 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        BootWarmupService.stop(this)
+        Log.i(
+            "PauseBootWarmup",
+            "Accessibility connected uptimeMs=${SystemClock.elapsedRealtime()}"
+        )
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
