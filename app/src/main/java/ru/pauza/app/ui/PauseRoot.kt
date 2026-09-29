@@ -42,6 +42,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.pauza.app.BuildConfig
 import ru.pauza.app.R
@@ -103,6 +107,8 @@ fun PauseRoot(
     blocker: PauseBlocker,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
@@ -214,6 +220,36 @@ fun PauseRoot(
         }
 
         loading = false
+    }
+
+    val currentScreen by rememberUpdatedState(screen)
+    val currentSelected by rememberUpdatedState(selected)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && currentScreen != Screen.ACTIVE) {
+                scope.launch {
+                    val loaded = withContext(Dispatchers.IO) {
+                        appsRepository.loadLaunchableApps() to appsRepository.loadAlwaysAllowedApps()
+                    }
+                    apps = loaded.first
+                    alwaysApps = loaded.second
+
+                    val validPackages = loaded.first.map { it.packageName }.toSet()
+                    val cleanedSelected = currentSelected.intersect(validPackages)
+                    if (cleanedSelected != currentSelected) {
+                        selected = cleanedSelected
+                        store.selectedPackages = cleanedSelected
+                    }
+
+                    loading = false
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     when (screen) {
