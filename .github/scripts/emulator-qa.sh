@@ -73,10 +73,34 @@ init_screen_coordinates() {
   echo "screen=$SCREEN_SIZE phoneTap=$PHONE_X,$PHONE_Y" | tee "$ARTIFACT_DIR/coordinates.txt"
 }
 
+tap_ui_text() {
+  local wanted="$1"
+  adb shell uiautomator dump /sdcard/pauza-window.xml >/dev/null 2>&1 || true
+  adb shell cat /sdcard/pauza-window.xml > /tmp/pauza-window.xml
+
+  local coords
+  coords="$(python3 - "$wanted" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+wanted = sys.argv[1]
+root = ET.parse("/tmp/pauza-window.xml").getroot()
+for node in root.iter("node"):
+    if node.attrib.get("text") == wanted or node.attrib.get("content-desc") == wanted:
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
+        if m:
+            x1,y1,x2,y2 = map(int, m.groups())
+            print(f"{(x1+x2)//2} {(y1+y2)//2}")
+            raise SystemExit
+raise SystemExit(1)
+PY
+)" || fail "could not find UI element: $wanted"
+
+  adb shell input tap ${coords}
+}
+
 open_allowed_phone() {
   local label="$1"
   wait_for_pause_visible "$label precondition"
-  adb shell input tap "$PHONE_X" "$PHONE_Y"
+  tap_ui_text "Телефон"
   wait_for_pause_hidden "$label"
   sleep 0.35
 }
