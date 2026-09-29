@@ -6,6 +6,7 @@ on:
     branches:
       - design-red-safe-0.8.14-on-0.7.5
     paths:
+      - "app/**"
       - ".github/scripts/design-screens-qa.sh"
       - ".github/workflows/design-screens-qa.yml"
 
