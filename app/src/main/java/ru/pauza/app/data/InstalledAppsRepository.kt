@@ -57,6 +57,24 @@ class InstalledAppsRepository(private val context: Context) {
             .toList()
     }
 
+    fun loadAppsByPackages(packages: Set<String>): List<InstalledApp> =
+        packages.asSequence()
+            .mapNotNull { pkg ->
+                val launchIntent = pm.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
+                val info = runCatching {
+                    pm.getApplicationInfo(pkg, PackageManager.MATCH_ALL)
+                }.getOrNull() ?: return@mapNotNull null
+                val label = info.loadLabel(pm)?.toString()?.trim().orEmpty()
+                if (label.isBlank()) return@mapNotNull null
+                InstalledApp(
+                    label = label,
+                    packageName = pkg,
+                    icon = runCatching { info.loadIcon(pm).toBitmapSafe(96, 96) }.getOrNull(),
+                )
+            }
+            .sortedBy { it.label.lowercase() }
+            .toList()
+
     fun launch(app: InstalledApp): Boolean {
         val intent = when (app.launchType) {
             AppLaunchType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))
