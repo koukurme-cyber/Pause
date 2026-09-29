@@ -65,5 +65,5 @@ jobs:
             gh release upload pauza-0.8.0-design-safe Pauza-0.8.0-design-safe.apk --clobber
             gh release edit pauza-0.8.0-design-safe --target "$GITHUB_SHA" --title "Пауза — 0.8.0 Design Safe" --notes "Visual redesign built on stable 0.7.5-systemui-fix. Application logic remains unchanged; only PauseRoot and theme styling are modified. Full navigation, timer and reboot regression passed."
           else
-            gh release create pauza-0.8.0-design-safe Pauza-0.8.0-design-safe.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.7.5 System UI fix" --notes "Visual redesign built on stable 0.7.5-systemui-fix. Application logic remains unchanged; only PauseRoot and theme styling are modified. Full navigation, timer and reboot regression passed."
+            gh release create pauza-0.8.0-design-safe Pauza-0.8.0-design-safe.apk --target "$GITHUB_SHA" --prerelease --title "Пауза — 0.8.0 Design Safe" --notes "Visual redesign built on stable 0.7.5-systemui-fix. Application logic remains unchanged; only PauseRoot and theme styling are modified. Full navigation, timer and reboot regression passed."
           fi
