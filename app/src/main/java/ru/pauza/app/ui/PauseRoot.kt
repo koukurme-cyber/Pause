@@ -1,6 +1,16 @@
 package ru.pauza.app.ui
 
 import android.app.Activity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedVisibility
+import android.app.ActivityManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -10,20 +20,16 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,18 +42,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -58,7 +68,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ru.pauza.app.BuildConfig
 import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
@@ -75,7 +87,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
-private enum class Screen { SETUP, REVIEW, ACTIVE }
+private enum class Screen { SETUP, SETTINGS, REVIEW, ACTIVE }
 private data class PauseDuration(
     val days: Int = 0,
     val hours: Int = 1,
@@ -95,14 +107,13 @@ fun PauseRoot(
     blocker: PauseBlocker,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
     var usageAccessEnabled by remember {
         mutableStateOf(UsageAccessMonitor.isGranted(context))
-    }
-    var overlayEnabled by remember {
-        mutableStateOf(Settings.canDrawOverlays(context))
     }
     var batteryUnrestricted by remember {
         mutableStateOf(BatteryOptimizationHelper.isUnrestricted(context))
@@ -118,7 +129,6 @@ fun PauseRoot(
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
-            overlayEnabled = Settings.canDrawOverlays(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             delay(700)
         }
@@ -128,13 +138,11 @@ fun PauseRoot(
         !setupChecklistCompleted ||
         !restrictedSettingsConfirmed ||
         !usageAccessEnabled ||
-        !overlayEnabled ||
         !accessibilityEnabled
     ) {
         SetupChecklistScreen(
             restrictedSettingsConfirmed = restrictedSettingsConfirmed,
             usageAccessEnabled = usageAccessEnabled,
-            overlayEnabled = overlayEnabled,
             accessibilityEnabled = accessibilityEnabled,
             batteryUnrestricted = batteryUnrestricted,
             onOpenAppSettings = {
@@ -152,14 +160,6 @@ fun PauseRoot(
             onOpenUsageAccess = {
                 UsageAccessMonitor.openSettings(context)
             },
-            onOpenOverlay = {
-                context.startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + context.packageName)
-                    )
-                )
-            },
             onOpenAccessibility = {
                 AccessibilityPauseBlocker.openSettings(context)
             },
@@ -170,7 +170,6 @@ fun PauseRoot(
                 if (
                     restrictedSettingsConfirmed &&
                     UsageAccessMonitor.isGranted(context) &&
-                    Settings.canDrawOverlays(context) &&
                     AccessibilityPauseBlocker.isEnabled(context)
                 ) {
                     store.firstSetupCompleted = true
@@ -187,6 +186,7 @@ fun PauseRoot(
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
     var duration by remember { mutableStateOf(PauseDuration()) }
+    var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
 
     val now = System.currentTimeMillis()
     var sessionEnd by remember {
@@ -197,12 +197,59 @@ fun PauseRoot(
     }
 
     LaunchedEffect(Unit) {
+        if (sessionEnd > System.currentTimeMillis()) {
+            val restored = withContext(Dispatchers.IO) {
+                appsRepository.loadAppsByPackages(selected) to appsRepository.loadAlwaysAllowedApps()
+            }
+            apps = restored.first
+            alwaysApps = restored.second
+            loading = false
+        }
+
         val loaded = withContext(Dispatchers.IO) {
             appsRepository.loadLaunchableApps() to appsRepository.loadAlwaysAllowedApps()
         }
         apps = loaded.first
         alwaysApps = loaded.second
+
+        val validPackages = loaded.first.map { it.packageName }.toSet()
+        val cleanedSelected = selected.intersect(validPackages)
+        if (cleanedSelected != selected) {
+            selected = cleanedSelected
+            store.selectedPackages = cleanedSelected
+        }
+
         loading = false
+    }
+
+    val currentScreen by rememberUpdatedState(screen)
+    val currentSelected by rememberUpdatedState(selected)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && currentScreen != Screen.ACTIVE) {
+                scope.launch {
+                    val loaded = withContext(Dispatchers.IO) {
+                        appsRepository.loadLaunchableApps() to appsRepository.loadAlwaysAllowedApps()
+                    }
+                    apps = loaded.first
+                    alwaysApps = loaded.second
+
+                    val validPackages = loaded.first.map { it.packageName }.toSet()
+                    val cleanedSelected = currentSelected.intersect(validPackages)
+                    if (cleanedSelected != currentSelected) {
+                        selected = cleanedSelected
+                        store.selectedPackages = cleanedSelected
+                    }
+
+                    loading = false
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     when (screen) {
@@ -217,7 +264,17 @@ fun PauseRoot(
                 store.selectedPackages = selected
             },
             onDuration = { duration = it },
+            onOpenSettings = { screen = Screen.SETTINGS },
             onContinue = { screen = Screen.REVIEW },
+        )
+
+        Screen.SETTINGS -> SettingsScreen(
+            testModeEnabled = testModeEnabled,
+            onTestModeChanged = { enabled ->
+                testModeEnabled = enabled
+                store.testModeEnabled = enabled
+            },
+            onBack = { screen = Screen.SETUP },
         )
 
         Screen.REVIEW -> ReviewScreen(
@@ -225,6 +282,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             duration = duration,
+            onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
@@ -238,18 +296,12 @@ fun PauseRoot(
             }
         )
 
-        Screen.ACTIVE -> {
-            LaunchedEffect(sessionEnd) {
-                if (Settings.canDrawOverlays(context)) {
-                    delay(250)
-                    (context as? Activity)?.moveTaskToBack(true)
-                }
-            }
-            ActiveScreen(
+        Screen.ACTIVE -> ActiveScreen(
             apps = apps,
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
+            testModeEnabled = testModeEnabled,
             onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
@@ -264,7 +316,6 @@ fun PauseRoot(
                 screen = Screen.SETUP
             }
         )
-        }
     }
 }
 
@@ -294,9 +345,10 @@ private fun BrandHeader(
             )
             Text(
                 "Только нужное",
-                fontSize = if (compact) 13.sp else 15.sp,
-                color = Color(0xFF1E6842),
-                fontWeight = FontWeight.SemiBold
+                fontSize = if (compact) 12.sp else 14.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.6.sp,
+                color = Color(0xFF4F6657)
             )
         }
     }
@@ -321,13 +373,11 @@ private fun SoftScreenBackground(
 private fun SetupChecklistScreen(
     restrictedSettingsConfirmed: Boolean,
     usageAccessEnabled: Boolean,
-    overlayEnabled: Boolean,
     accessibilityEnabled: Boolean,
     batteryUnrestricted: Boolean,
     onOpenAppSettings: () -> Unit,
     onConfirmRestrictedSettings: () -> Unit,
     onOpenUsageAccess: () -> Unit,
-    onOpenOverlay: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onOpenBatterySettings: () -> Unit,
     onContinue: () -> Unit,
@@ -335,7 +385,7 @@ private fun SetupChecklistScreen(
     var restrictedSettingsOpened by rememberSaveable { mutableStateOf(false) }
 
     val requiredReady =
-        restrictedSettingsConfirmed && usageAccessEnabled && overlayEnabled && accessibilityEnabled
+        restrictedSettingsConfirmed && usageAccessEnabled && accessibilityEnabled
 
     SoftScreenBackground {
         LazyColumn(
@@ -401,26 +451,11 @@ private fun SetupChecklistScreen(
             item {
                 SetupChecklistCard(
                     number = "3",
-                    title = "Показывать поверх других приложений",
-                    text = "Нужно для нового блокирующего экрана Паузы. Системные окна Android, включая меню питания, остаются поверх него.",
-                    completed = overlayEnabled,
-                    enabled = restrictedSettingsConfirmed &&
-                        usageAccessEnabled &&
-                        !overlayEnabled,
-                    buttonText = "Открыть настройки",
-                    onClick = onOpenOverlay
-                )
-            }
-
-            item {
-                SetupChecklistCard(
-                    number = "4",
                     title = "Специальные возможности",
-                    text = "Оставляем включёнными как резервный источник событий. Сам блокирующий экран теперь работает через обычное системное наложение.",
+                    text = "Включите «Пауза» в специальных возможностях. Это резервный контроль и блокирующий экран.",
                     completed = accessibilityEnabled,
                     enabled = restrictedSettingsConfirmed &&
                         usageAccessEnabled &&
-                        overlayEnabled &&
                         !accessibilityEnabled,
                     buttonText = "Открыть настройки",
                     onClick = onOpenAccessibility
@@ -429,7 +464,7 @@ private fun SetupChecklistScreen(
 
             item {
                 SetupChecklistCard(
-                    number = "5",
+                    number = "4",
                     title = "Работа без ограничений батареи",
                     text = "Рекомендуется для более надёжной работы Паузы в фоне. Этот шаг необязательный.",
                     completed = batteryUnrestricted,
@@ -608,6 +643,7 @@ private fun SetupScreen(
     duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
+    onOpenSettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -647,7 +683,26 @@ private fun SetupScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
-            BrandHeader(compact = true)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrandHeader(
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Настройки",
+                        tint = Color(0xFF263029),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
 
             AnimatedVisibility(
                 visible = !listExpanded,
@@ -669,10 +724,10 @@ private fun SetupScreen(
                 Column {
                     Spacer(Modifier.height(7.dp))
                     Text(
-                        "Выберите длительность и доступные приложения.",
-                        color = Color(0xFF858B86),
+                        "Пауза помогает на время убрать лишнее. Выберите приложения, которые должны остаться доступными, и срок — до окончания таймера всё остальное будет заблокировано.",
+                        color = Color(0xFF737A75),
                         fontSize = 14.sp,
-                        lineHeight = 18.sp
+                        lineHeight = 19.sp
                     )
 
                     Spacer(Modifier.height(10.dp))
@@ -843,30 +898,6 @@ private fun DurationPicker(
         )
 
         Row(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .height(32.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            repeat(3) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 3.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFFE7F3E2).copy(alpha = .82f))
-                        .border(
-                            1.dp,
-                            Color(0xFF85B18D).copy(alpha = .58f),
-                            RoundedCornerShape(14.dp)
-                        )
-                )
-            }
-        }
-
-        Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -874,32 +905,26 @@ private fun DurationPicker(
                 value = duration.days,
                 max = 29,
                 modifier = Modifier.weight(1f),
-                unitFormatter = { formatDaysUnit(it) },
+                formatter = { formatDaysWheel(it) },
                 onValueChange = { onChange(duration.copy(days = it)) }
             )
             DurationWheel(
                 value = duration.hours,
                 max = 23,
                 modifier = Modifier.weight(1f),
-                unitFormatter = { "ч" },
+                formatter = { "$it ч" },
                 onValueChange = { onChange(duration.copy(hours = it)) }
             )
             DurationWheel(
                 value = duration.minutes,
                 max = 59,
                 modifier = Modifier.weight(1f),
-                unitFormatter = { "мин" },
+                formatter = { "$it мин" },
                 onValueChange = { onChange(duration.copy(minutes = it)) }
             )
         }
     }
 
-    Spacer(Modifier.height(4.dp))
-    Text(
-        "От 1 минуты до 29 дней 23 часов 59 минут",
-        color = PauseMuted,
-        fontSize = 10.sp
-    )
 }
 
 @Composable
@@ -907,29 +932,41 @@ private fun DurationWheel(
     value: Int,
     max: Int,
     modifier: Modifier = Modifier,
-    unitFormatter: (Int) -> String,
+    formatter: (Int) -> String,
     onValueChange: (Int) -> Unit,
 ) {
+    val valueCount = max + 1
+    val loopBase = remember(max) {
+        val middle = Int.MAX_VALUE / 2
+        middle - Math.floorMod(middle, valueCount)
+    }
+    val initialFirstVisible = loopBase + value.coerceIn(0, max) - 1
+
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = value.coerceIn(0, max)
+        initialFirstVisibleItemIndex = initialFirstVisible
     )
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
 
-    val centeredValue by remember(listState, max, value) {
+    val centeredItemIndex by remember(listState) {
         derivedStateOf {
             val layout = listState.layoutInfo
             val visible = layout.visibleItemsInfo
             if (visible.isEmpty()) {
-                value.coerceIn(0, max)
+                loopBase + latestValue.coerceIn(0, max)
             } else {
                 val viewportCenter =
                     (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                val nearest = visible.minByOrNull { item ->
+                visible.minByOrNull { item ->
                     abs((item.offset + item.size / 2) - viewportCenter)
-                }
-                ((nearest?.index ?: (value + 1)) - 1).coerceIn(0, max)
+                }?.index ?: (loopBase + latestValue.coerceIn(0, max))
             }
+        }
+    }
+
+    val centeredValue by remember(centeredItemIndex, loopBase, valueCount) {
+        derivedStateOf {
+            Math.floorMod(centeredItemIndex - loopBase, valueCount)
         }
     }
 
@@ -937,15 +974,27 @@ private fun DurationWheel(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling && listState.layoutInfo.visibleItemsInfo.isNotEmpty()) {
-                    val target = centeredValue.coerceIn(0, max)
+                    val layout = listState.layoutInfo
+                    val viewportCenter =
+                        (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+                    val nearestIndex = layout.visibleItemsInfo.minByOrNull { item ->
+                        abs((item.offset + item.size / 2) - viewportCenter)
+                    }?.index ?: centeredItemIndex
+
+                    val targetFirstIndex =
+                        (nearestIndex - 1).coerceIn(0, Int.MAX_VALUE - 3)
+
                     if (
-                        listState.firstVisibleItemIndex != target ||
+                        listState.firstVisibleItemIndex != targetFirstIndex ||
                         listState.firstVisibleItemScrollOffset != 0
                     ) {
-                        listState.animateScrollToItem(target)
+                        listState.animateScrollToItem(targetFirstIndex)
                     }
-                    if (target != latestValue) {
-                        latestOnValueChange(target)
+
+                    val targetValue =
+                        Math.floorMod(nearestIndex - loopBase, valueCount)
+                    if (targetValue != latestValue) {
+                        latestOnValueChange(targetValue)
                     }
                 }
             }
@@ -957,95 +1006,57 @@ private fun DurationWheel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         items(
-            count = max + 3,
+            count = Int.MAX_VALUE,
             key = { it }
         ) { listIndex ->
-            val actualValue = listIndex - 1
+            val actualValue = Math.floorMod(listIndex - loopBase, valueCount)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(30.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (actualValue in 0..max) {
-                    val distance = abs(actualValue - centeredValue)
-                    val alpha = when (distance) {
-                        0 -> 1f
-                        1 -> 0.52f
-                        else -> 0.16f
-                    }
-                    val fontSize = when (distance) {
+                val distance = abs(listIndex - centeredItemIndex)
+                val alpha = when (distance) {
+                    0 -> 1f
+                    1 -> 0.52f
+                    else -> 0.16f
+                }
+                val fontSize = when (distance) {
+                    0 -> 18.sp
+                    1 -> 13.sp
+                    else -> 10.sp
+                }
+                val fontWeight = when (distance) {
+                    0 -> FontWeight.SemiBold
+                    1 -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                }
+
+                Text(
+                    text = formatter(actualValue),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                    fontSize = fontSize,
+                    fontWeight = fontWeight,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    lineHeight = when (distance) {
                         0 -> 18.sp
                         1 -> 13.sp
                         else -> 10.sp
-                    }
-                    val fontWeight = when (distance) {
-                        0 -> FontWeight.SemiBold
-                        1 -> FontWeight.Medium
-                        else -> FontWeight.Normal
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = actualValue.toString(),
-                            modifier = Modifier.width(32.dp),
-                            color = if (distance == 0) {
-                                Color(0xFF184F35)
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-                            },
-                            fontSize = if (distance == 0) 19.sp else fontSize,
-                            fontWeight = if (distance == 0) FontWeight.Bold else fontWeight,
-                            textAlign = TextAlign.End,
-                            maxLines = 1,
-                            lineHeight = when (distance) {
-                                0 -> 19.sp
-                                1 -> 13.sp
-                                else -> 10.sp
-                            },
-                            style = TextStyle(
-                                fontFeatureSettings = "tnum",
-                                platformStyle = PlatformTextStyle(
-                                    includeFontPadding = false
-                                )
-                            )
+                    },
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(
+                            includeFontPadding = false
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = unitFormatter(actualValue),
-                            modifier = Modifier.width(44.dp),
-                            color = if (distance == 0) {
-                                Color(0xFF184F35)
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-                            },
-                            fontSize = fontSize,
-                            fontWeight = if (distance == 0) FontWeight.SemiBold else fontWeight,
-                            textAlign = TextAlign.Start,
-                            maxLines = 1,
-                            lineHeight = when (distance) {
-                                0 -> 18.sp
-                                1 -> 13.sp
-                                else -> 10.sp
-                            },
-                            style = TextStyle(
-                                platformStyle = PlatformTextStyle(
-                                    includeFontPadding = false
-                                )
-                            )
-                        )
-                    }
-                }
+                    )
+                )
             }
         }
     }
 }
 
-private fun formatDaysUnit(value: Int): String {
+private fun formatDaysWheel(value: Int): String {
     val mod100 = value % 100
     val mod10 = value % 10
     val word = when {
@@ -1054,7 +1065,109 @@ private fun formatDaysUnit(value: Int): String {
         mod10 in 2..4 -> "дня"
         else -> "дней"
     }
-    return word
+    return "$value $word"
+}
+
+@Composable
+private fun SettingsScreen(
+    testModeEnabled: Boolean,
+    onTestModeChanged: (Boolean) -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+
+    SoftScreenBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onBack,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "‹",
+                        fontSize = 34.sp,
+                        lineHeight = 34.sp,
+                        color = Color(0xFF4F5952)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Настройки",
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Тестовый режим",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Позволяет досрочно завершить активную Паузу семью касаниями по таймеру.",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Switch(
+                        checked = testModeEnabled,
+                        onCheckedChange = onTestModeChanged,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = Color(0xFF36B34A),
+                            checkedBorderColor = Color(0xFF36B34A),
+                            uncheckedThumbColor = PauseMuted,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                            uncheckedBorderColor = Color(0xFFCBD0C8),
+                            disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.62f),
+                            disabledCheckedTrackColor = Color(0xFF36B34A).copy(alpha = 0.42f),
+                            disabledCheckedBorderColor = Color(0xFF36B34A).copy(alpha = 0.32f),
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                "Версия " + BuildConfig.VERSION_NAME,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                color = PauseMuted,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
 }
 
 @Composable
@@ -1063,6 +1176,7 @@ private fun ReviewScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     duration: PauseDuration,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
 ) {
@@ -1079,21 +1193,32 @@ private fun ReviewScreen(
                 .navigationBarsPadding()
                 .padding(18.dp)
         ) {
-            BrandHeader(compact = true)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrandHeader(
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Настройки",
+                        tint = Color(0xFF263029),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(10.dp))
             Text(
                 "Проверьте перед запуском",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "После запуска будут работать только выбранные приложения. Список изменить нельзя до окончания таймера.",
-                color = Color(0xFFB3261E),
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.Medium
-            )
-
             Spacer(Modifier.height(10.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
@@ -1103,17 +1228,52 @@ private fun ReviewScreen(
                     Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        "Точно всё нужное оставили?",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
-                        color = PauseMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
+                    Row(
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .drawBehind {
+                                    val triangle = Path().apply {
+                                        moveTo(size.width / 2f, 0f)
+                                        lineTo(size.width, size.height)
+                                        lineTo(0f, size.height)
+                                        close()
+                                    }
+                                    drawPath(
+                                        path = triangle,
+                                        color = Color(0xFFF6C543)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "!",
+                                color = Color(0xFF5C4710),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(top = 5.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "После запуска изменить время и список приложений нельзя.",
+                                color = Color(0xFF8E2B22),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
+                                color = PauseMuted,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1180,6 +1340,7 @@ private fun ActiveScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     sessionEnd: Long,
+    testModeEnabled: Boolean,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
     onTapExit: () -> Unit,
@@ -1208,6 +1369,17 @@ private fun ActiveScreen(
         alwaysApps + apps.filter { it.packageName in selected }
     }
 
+    val defaultFlingBehavior = ScrollableDefaults.flingBehavior()
+    val gentleFlingBehavior = remember(defaultFlingBehavior) {
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+                return with(defaultFlingBehavior) {
+                    performFling(initialVelocity * 0.5f)
+                }
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(R.drawable.pauza_active_concept_bg),
@@ -1216,9 +1388,17 @@ private fun ActiveScreen(
             modifier = Modifier.matchParentSize()
         )
 
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Color(0xFFFBF7EA).copy(alpha = .10f))
+        )
+
         Column(
             Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1250,12 +1430,17 @@ private fun ActiveScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            val timerTapInteraction = remember { MutableInteractionSource() }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
+                    .then(
+                        if (testModeEnabled) {
+                            Modifier.clickable(
+                                interactionSource = timerTapInteraction,
+                                indication = null
+                            ) {
                                 val tapAt = SystemClock.elapsedRealtime()
                                 if (tapAt - lastTapAt > 3_000L) tapCount = 0
                                 lastTapAt = tapAt
@@ -1265,10 +1450,12 @@ private fun ActiveScreen(
                                     onTapExit()
                                 }
                             }
-                        )
-                    },
+                        } else {
+                            Modifier
+                        }
+                    ),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFFEFA)
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .88f)
                 ),
                 shape = RoundedCornerShape(30.dp),
                 border = BorderStroke(
@@ -1286,7 +1473,7 @@ private fun ActiveScreen(
                         Modifier
                             .size(54.dp)
                             .clip(RoundedCornerShape(18.dp))
-                            .background(Color(0xFFE7F3E2)),
+                            .background(Color(0xFFE7F3E2).copy(alpha = .94f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
@@ -1323,7 +1510,16 @@ private fun ActiveScreen(
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Подождите до окончания Паузы. Все остальные приложения недоступны.",
+                color = Color(0xFF596359),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 18.dp)
+            )
+            Spacer(Modifier.height(20.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -1332,7 +1528,8 @@ private fun ActiveScreen(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp),
-                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp)
+                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp),
+                flingBehavior = gentleFlingBehavior
             ) {
                 items(
                     items = shortcuts,
@@ -1341,7 +1538,8 @@ private fun ActiveScreen(
                     LauncherAppIcon(
                         app = app,
                         onClick = { onLaunch(app) },
-                        compact = true
+                        compact = true,
+                        useSystemLauncherSize = true
                     )
                 }
             }
@@ -1354,12 +1552,29 @@ private fun LauncherAppIcon(
     app: InstalledApp,
     onClick: (() -> Unit)? = null,
     compact: Boolean = false,
+    useSystemLauncherSize: Boolean = false,
 ) {
     val interactionModifier =
         if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
 
-    val tileSize = if (compact) 58.dp else 66.dp
-    val iconSize = if (compact) 48.dp else 54.dp
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val systemLauncherIconSize = remember(context, density) {
+        val activityManager =
+            context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as ActivityManager
+        with(density) { activityManager.launcherLargeIconSize.toDp() }
+    }
+
+    val iconSize = when {
+        useSystemLauncherSize -> systemLauncherIconSize
+        compact -> 48.dp
+        else -> 54.dp
+    }
+    val tileSize = when {
+        useSystemLauncherSize -> iconSize + 8.dp
+        compact -> 58.dp
+        else -> 66.dp
+    }
     val radius = if (compact) 18.dp else 20.dp
     val labelSize = if (compact) 11.sp else 12.sp
     val labelLineHeight = if (compact) 13.sp else 14.sp
@@ -1587,7 +1802,7 @@ private fun HoldButton(
             if (pressing) {
                 "Продолжайте удерживать…"
             } else {
-                "Удерживайте 2 секунды, чтобы начать"
+                "Начать Паузу"
             },
             color = Color.White,
             fontWeight = FontWeight.SemiBold,
