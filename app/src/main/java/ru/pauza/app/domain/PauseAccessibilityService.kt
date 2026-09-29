@@ -377,7 +377,9 @@ class PauseAccessibilityService : AccessibilityService() {
                     radiusDp = 26f
                 )
             )
-            setOnClickListener { registerExitTap() }
+            if (store.testModeEnabled) {
+                setOnClickListener { registerExitTap() }
+            }
         }
         content.addView(
             timerCard,
