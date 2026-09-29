@@ -1,4 +1,4 @@
-name: Emulator QA 0.7.8 direct-boot recovery
+name: Emulator QA 0.7.9 Direct Boot accessibility
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches:
       - fix-systemui-transient-0.7.5
       - directboot-recovery-0.7.8
+      - directboot-accessibility-0.7.9
     paths:
       - "app/**"
       - ".github/scripts/emulator-qa-074.sh"
