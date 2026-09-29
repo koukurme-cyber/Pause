@@ -1273,7 +1273,8 @@ private fun ActiveScreen(
                     LauncherAppIcon(
                         app = app,
                         onClick = { onLaunch(app) },
-                        compact = true
+                        compact = true,
+                        useSystemLauncherSize = true
                     )
                 }
             }
