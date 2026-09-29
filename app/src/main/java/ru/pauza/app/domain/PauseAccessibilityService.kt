@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
@@ -301,19 +302,31 @@ class PauseAccessibilityService : AccessibilityService() {
         if (overlay != null) return
 
         val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(247, 248, 244))
+            setBackgroundColor(Color.rgb(92, 18, 20))
             isClickable = true
             isFocusable = true
             setOnClickListener { returnToPause() }
         }
 
+        val background = ImageView(this).apply {
+            setImageResource(ru.pauza.app.R.drawable.pauza_active_concept_bg)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        root.addView(
+            background,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
         val timer = TextView(this).apply {
-            setTextColor(Color.rgb(30, 36, 32))
+            setTextColor(Color.rgb(255, 248, 240))
             textSize = 52f
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.create(
                 android.graphics.Typeface.DEFAULT,
-                android.graphics.Typeface.NORMAL
+                android.graphics.Typeface.BOLD
             )
         }
         overlayTimer = timer
