@@ -42,8 +42,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
@@ -1166,11 +1168,41 @@ private fun ReviewScreen(
                     Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        "Точно всё нужное оставили?",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .drawBehind {
+                                    val triangle = Path().apply {
+                                        moveTo(size.width / 2f, 0f)
+                                        lineTo(size.width, size.height)
+                                        lineTo(0f, size.height)
+                                        close()
+                                    }
+                                    drawPath(
+                                        path = triangle,
+                                        color = Color(0xFFF6C543)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "?",
+                                color = Color(0xFF5C4710),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(top = 5.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Точно всё нужное оставили?",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        )
+                    }
                     Text(
                         "Проверьте банковские приложения, карты и навигацию, транспорт и проездные, такси, домофон или пропуск, парковку, билеты и документы.",
                         color = PauseMuted,
@@ -1402,7 +1434,16 @@ private fun ActiveScreen(
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Подождите до окончания Паузы. Все остальные приложения недоступны.",
+                color = Color(0xFF596359),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 18.dp)
+            )
+            Spacer(Modifier.height(20.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -1684,7 +1725,7 @@ private fun HoldButton(
             if (pressing) {
                 "Продолжайте удерживать…"
             } else {
-                "Удерживайте 2 секунды, чтобы начать"
+                "Начать Паузу"
             },
             color = Color.White,
             fontWeight = FontWeight.SemiBold,
