@@ -38,6 +38,12 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      - name: Set test version
+        shell: bash
+        run: |
+          sed -i 's/versionCode = 11/versionCode = 815/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.14-red-safe-reboot-test"/' app/build.gradle.kts
+
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
 
