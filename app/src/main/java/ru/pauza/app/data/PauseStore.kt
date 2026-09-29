@@ -29,6 +29,10 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_TEST_MODE_ENABLED, false)
         set(value) { prefs.edit().putBoolean(KEY_TEST_MODE_ENABLED, value).apply() }
 
+    var shortVideoBlockingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHORT_VIDEO_BLOCKING_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_SHORT_VIDEO_BLOCKING_ENABLED, value).apply() }
+
     fun clearSession() {
         prefs.edit().remove(KEY_SESSION_END).apply()
     }
@@ -40,5 +44,6 @@ class PauseStore(context: Context) {
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
         private const val KEY_TEST_MODE_ENABLED = "test_mode_enabled"
+        private const val KEY_SHORT_VIDEO_BLOCKING_ENABLED = "short_video_blocking_enabled"
     }
 }
