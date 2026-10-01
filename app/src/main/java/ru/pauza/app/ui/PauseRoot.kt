@@ -318,19 +318,39 @@ fun PauseRoot(
         )
 
         Screen.SETTINGS -> SettingsScreen(
+            apps = apps,
             savedSets = savedSets,
-            selectedCount = selected.size,
             activeSavedSetName = activeSavedSetName,
-            onSaveSet = { name ->
-                if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
-                    val savedSet = PauseStore.SavedAppSet(
-                        name = name.trim().take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH),
-                        packages = selected,
+            onUpsertSet = { index, name, packages ->
+                val normalizedName =
+                    name.trim().take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
+                if (index == null) {
+                    if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
+                        savedSets = savedSets + PauseStore.SavedAppSet(
+                            name = normalizedName,
+                            packages = packages,
+                        )
+                        store.savedAppSets = savedSets
+                    }
+                } else if (index in savedSets.indices) {
+                    val previous = savedSets[index]
+                    val updated = PauseStore.SavedAppSet(
+                        name = normalizedName,
+                        packages = packages,
                     )
-                    savedSets = savedSets + savedSet
+                    savedSets = savedSets.toMutableList().also {
+                        it[index] = updated
+                    }
                     store.savedAppSets = savedSets
-                    activeSavedSetName = savedSet.name
-                    store.activeSavedSetName = savedSet.name
+
+                    if (activeSavedSetName == previous.name) {
+                        activeSavedSetName = updated.name
+                        store.activeSavedSetName = updated.name
+
+                        val installedPackages = apps.map { it.packageName }.toSet()
+                        selected = updated.packages.intersect(installedPackages)
+                        store.selectedPackages = selected
+                    }
                 }
             },
             onDeleteSet = { index ->
@@ -1113,9 +1133,9 @@ private fun SavedSetSelector(
 @Composable
 private fun SavedSetsSettingsCard(
     savedSets: List<PauseStore.SavedAppSet>,
-    selectedCount: Int,
     activeSavedSetName: String?,
     onCreate: () -> Unit,
+    onEdit: (Int) -> Unit,
     onDelete: (Int) -> Unit,
 ) {
     Card(
@@ -1181,6 +1201,7 @@ private fun SavedSetsSettingsCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clickable { onEdit(index) }
                                 .padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1202,7 +1223,7 @@ private fun SavedSetsSettingsCard(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    "${savedSet.packages.size} приложений",
+                                    "${savedSet.packages.size} приложений · нажмите, чтобы изменить",
                                     color = PauseMuted,
                                     fontSize = 11.sp
                                 )
@@ -1229,7 +1250,7 @@ private fun SavedSetsSettingsCard(
             if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Новый набор сохранит текущий выбор: $selectedCount приложений.",
+                    "Имя и приложения для нового набора выбираются на следующем экране.",
                     color = PauseMuted,
                     fontSize = 11.sp
                 )
@@ -1429,11 +1450,215 @@ private fun formatDaysWheel(value: Int): String {
 }
 
 @Composable
+private fun SavedSetEditorScreen(
+    apps: List<InstalledApp>,
+    initialName: String,
+    initialPackages: Set<String>,
+    existingNames: List<String>,
+    isNew: Boolean,
+    onSave: (String, Set<String>) -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var selectedPackages by remember(initialPackages) {
+        mutableStateOf(initialPackages.intersect(apps.map { it.packageName }.toSet()))
+    }
+    var searchQuery by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    val filteredApps = remember(apps, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            apps
+        } else {
+            apps.filter { it.label.contains(query, ignoreCase = true) }
+        }
+    }
+
+    val normalizedName = name.trim()
+    val duplicateName = existingNames.any {
+        it.equals(normalizedName, ignoreCase = true)
+    }
+    val canSave = normalizedName.isNotBlank() && !duplicateName
+
+    SoftScreenBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onBack,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "‹",
+                        fontSize = 34.sp,
+                        lineHeight = 34.sp,
+                        color = Color(0xFF4F5952)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (isNew) "Новый набор" else "Изменить набор",
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        "Телефон и Сообщения всегда доступны отдельно",
+                        color = PauseMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it.take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Название набора") },
+                placeholder = { Text("Например, Работа") },
+                singleLine = true,
+                isError = duplicateName,
+                supportingText = {
+                    when {
+                        duplicateName -> Text("Такое название уже есть")
+                        else -> Text(
+                            "${name.length}/${PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH}"
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(17.dp)
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Найти приложение") },
+                singleLine = true,
+                shape = RoundedCornerShape(17.dp),
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        TextButton(onClick = { searchQuery = "" }) {
+                            Text("×", fontSize = 21.sp)
+                        }
+                    }
+                }
+            )
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(30.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Выбрано: ${selectedPackages.size}",
+                    color = PauseMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedPackages.isNotEmpty()) {
+                    TextButton(onClick = { selectedPackages = emptySet() }) {
+                        Text("Снять все", fontSize = 12.sp)
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .92f)
+                ),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(0.dp, Color.Transparent)
+            ) {
+                if (filteredApps.isEmpty()) {
+                    Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Ничего не найдено", color = PauseMuted)
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        items(
+                            items = filteredApps,
+                            key = { "set-editor:" + it.launchType.name + ":" + it.packageName }
+                        ) { app ->
+                            AppRow(
+                                app = app,
+                                checked = app.packageName in selectedPackages,
+                                locked = false,
+                                onChecked = { enabled ->
+                                    selectedPackages =
+                                        if (enabled) {
+                                            selectedPackages + app.packageName
+                                        } else {
+                                            selectedPackages - app.packageName
+                                        }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Button(
+                onClick = {
+                    onSave(normalizedName, selectedPackages)
+                },
+                enabled = canSave,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF17633D),
+                    disabledContainerColor = Color(0xFFD9DCD6),
+                )
+            ) {
+                Text(
+                    if (isNew) "Создать набор" else "Сохранить изменения",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsScreen(
+    apps: List<InstalledApp>,
     savedSets: List<PauseStore.SavedAppSet>,
-    selectedCount: Int,
     activeSavedSetName: String?,
-    onSaveSet: (String) -> Unit,
+    onUpsertSet: (Int?, String, Set<String>) -> Unit,
     onDeleteSet: (Int) -> Unit,
     testModeEnabled: Boolean,
     onTestModeChanged: (Boolean) -> Unit,
@@ -1445,9 +1670,34 @@ private fun SettingsScreen(
     onOpenNotificationPolicyAccess: () -> Unit,
     onBack: () -> Unit,
 ) {
+    var editingSetIndex by remember { mutableStateOf<Int?>(null) }
+    var creatingSet by remember { mutableStateOf(false) }
+
+    if (creatingSet || editingSetIndex != null) {
+        val editingSet = editingSetIndex?.let(savedSets::getOrNull)
+        SavedSetEditorScreen(
+            apps = apps,
+            initialName = editingSet?.name.orEmpty(),
+            initialPackages = editingSet?.packages.orEmpty(),
+            existingNames = savedSets
+                .mapIndexedNotNull { index, savedSet ->
+                    if (index == editingSetIndex) null else savedSet.name
+                },
+            isNew = creatingSet,
+            onSave = { name, packages ->
+                onUpsertSet(editingSetIndex, name, packages)
+                creatingSet = false
+                editingSetIndex = null
+            },
+            onBack = {
+                creatingSet = false
+                editingSetIndex = null
+            },
+        )
+        return
+    }
+
     BackHandler(onBack = onBack)
-    var showSaveSetDialog by remember { mutableStateOf(false) }
-    var saveSetName by remember { mutableStateOf("") }
 
     SoftScreenBackground {
         Column(
@@ -1490,11 +1740,14 @@ private fun SettingsScreen(
             ) {
             SavedSetsSettingsCard(
                 savedSets = savedSets,
-                selectedCount = selectedCount,
                 activeSavedSetName = activeSavedSetName,
                 onCreate = {
-                    saveSetName = ""
-                    showSaveSetDialog = true
+                    editingSetIndex = null
+                    creatingSet = true
+                },
+                onEdit = { index ->
+                    editingSetIndex = index
+                    creatingSet = false
                 },
                 onDelete = onDeleteSet,
             )
@@ -1669,82 +1922,6 @@ private fun SettingsScreen(
             }
         }
 
-        if (showSaveSetDialog) {
-            val trimmedName = saveSetName.trim()
-            val duplicateName = savedSets.any {
-                it.name.equals(trimmedName, ignoreCase = true)
-            }
-            val canConfirm =
-                trimmedName.isNotBlank() &&
-                    !duplicateName &&
-                    savedSets.size < PauseStore.MAX_SAVED_APP_SETS
-
-            AlertDialog(
-                onDismissRequest = {
-                    showSaveSetDialog = false
-                    saveSetName = ""
-                },
-                title = {
-                    Text(
-                        "Создать набор",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            "Будет сохранён текущий выбор: $selectedCount приложений. Телефон и Сообщения всегда доступны отдельно.",
-                            color = PauseMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        OutlinedTextField(
-                            value = saveSetName,
-                            onValueChange = {
-                                saveSetName =
-                                    it.take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Название") },
-                            placeholder = { Text("Например, Работа") },
-                            singleLine = true,
-                            isError = duplicateName,
-                            supportingText = {
-                                when {
-                                    duplicateName -> Text("Такое название уже есть")
-                                    else -> Text(
-                                        "${saveSetName.length}/${PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH}"
-                                    )
-                                }
-                            }
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = canConfirm,
-                        onClick = {
-                            onSaveSet(trimmedName)
-                            showSaveSetDialog = false
-                            saveSetName = ""
-                        }
-                    ) {
-                        Text("Создать")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showSaveSetDialog = false
-                            saveSetName = ""
-                        }
-                    ) {
-                        Text("Отмена")
-                    }
-                }
-            )
-        }
     }
 }
 
