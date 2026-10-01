@@ -193,6 +193,7 @@ fun PauseRoot(
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
     var savedSets by remember { mutableStateOf(store.savedAppSets) }
+    var activeSavedSetName by remember { mutableStateOf(store.activeSavedSetName) }
     var duration by remember { mutableStateOf(PauseDuration()) }
     var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
     var startVibrationEnabled by remember { mutableStateOf(store.startVibrationEnabled) }
@@ -232,6 +233,20 @@ fun PauseRoot(
         if (cleanedSelected != selected) {
             selected = cleanedSelected
             store.selectedPackages = cleanedSelected
+        }
+
+        val activeSavedSet = savedSets.firstOrNull {
+            it.name == activeSavedSetName
+        }
+        if (
+            activeSavedSetName != null &&
+            (
+                activeSavedSet == null ||
+                    activeSavedSet.packages.intersect(validPackages) != cleanedSelected
+            )
+        ) {
+            activeSavedSetName = null
+            store.activeSavedSetName = null
         }
 
         loading = false
@@ -274,10 +289,13 @@ fun PauseRoot(
             loading = loading,
             selected = selected,
             savedSets = savedSets,
+            activeSavedSetName = activeSavedSetName,
             duration = duration,
             onToggle = { pkg, enabled ->
                 selected = if (enabled) selected + pkg else selected - pkg
                 store.selectedPackages = selected
+                activeSavedSetName = null
+                store.activeSavedSetName = null
             },
             onDuration = { duration = it },
             onSaveSet = { name ->
@@ -292,15 +310,27 @@ fun PauseRoot(
             onApplySet = { index ->
                 val savedSet = savedSets.getOrNull(index)
                 if (savedSet != null) {
-                    val installedPackages = apps.map { it.packageName }.toSet()
-                    selected = savedSet.packages.intersect(installedPackages)
-                    store.selectedPackages = selected
+                    if (activeSavedSetName == savedSet.name) {
+                        activeSavedSetName = null
+                        store.activeSavedSetName = null
+                    } else {
+                        val installedPackages = apps.map { it.packageName }.toSet()
+                        selected = savedSet.packages.intersect(installedPackages)
+                        store.selectedPackages = selected
+                        activeSavedSetName = savedSet.name
+                        store.activeSavedSetName = savedSet.name
+                    }
                 }
             },
             onDeleteSet = { index ->
                 if (index in savedSets.indices) {
+                    val removed = savedSets[index]
                     savedSets = savedSets.toMutableList().also { it.removeAt(index) }
                     store.savedAppSets = savedSets
+                    if (activeSavedSetName == removed.name) {
+                        activeSavedSetName = null
+                        store.activeSavedSetName = null
+                    }
                 }
             },
             onOpenSettings = { screen = Screen.SETTINGS },
@@ -703,6 +733,7 @@ private fun SetupScreen(
     loading: Boolean,
     selected: Set<String>,
     savedSets: List<PauseStore.SavedAppSet>,
+    activeSavedSetName: String?,
     duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
@@ -725,17 +756,8 @@ private fun SetupScreen(
             allApps.filter { it.label.contains(query, ignoreCase = true) }
         }
     }
-    val installedSelectablePackages = remember(apps) {
-        apps.map { it.packageName }.toSet()
-    }
-    val activeSavedSetIndex = remember(
-        savedSets,
-        selected,
-        installedSelectablePackages
-    ) {
-        savedSets.indexOfFirst { savedSet ->
-            savedSet.packages.intersect(installedSelectablePackages) == selected
-        }
+    val activeSavedSetIndex = remember(savedSets, activeSavedSetName) {
+        savedSets.indexOfFirst { it.name == activeSavedSetName }
     }
     val collapseThresholdPx = with(LocalDensity.current) {
         56.dp.roundToPx()
@@ -836,24 +858,25 @@ private fun SetupScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(10.dp))
-                    SavedSetsCard(
-                        savedSets = savedSets,
-                        activeSetIndex = activeSavedSetIndex,
-                        canSave = savedSets.size < PauseStore.MAX_SAVED_APP_SETS,
-                        selectedCount = selected.size,
-                        onSave = {
-                            saveSetName = ""
-                            showSaveSetDialog = true
-                        },
-                        onApply = { index ->
-                            onApplySet(index)
-                            searchQuery = ""
-                        },
-                        onDelete = onDeleteSet,
-                    )
                 }
             }
+
+            Spacer(Modifier.height(8.dp))
+            SavedSetsCard(
+                savedSets = savedSets,
+                activeSetIndex = activeSavedSetIndex,
+                canSave = savedSets.size < PauseStore.MAX_SAVED_APP_SETS,
+                selectedCount = selected.size,
+                onSave = {
+                    saveSetName = ""
+                    showSaveSetDialog = true
+                },
+                onApply = { index ->
+                    onApplySet(index)
+                    searchQuery = ""
+                },
+                onDelete = onDeleteSet,
+            )
 
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
@@ -1088,7 +1111,7 @@ private fun SavedSetsCard(
                         savedSets.getOrNull(activeSetIndex)?.name
                     Text(
                         if (activeSetName != null) {
-                            "Выбран: $activeSetName"
+                            "Выбран: $activeSetName · нажмите ещё раз, чтобы снять"
                         } else {
                             "${savedSets.size}/${PauseStore.MAX_SAVED_APP_SETS} · выбрано приложений: $selectedCount"
                         },
@@ -1136,14 +1159,14 @@ private fun SavedSetsCard(
                             color = if (isActive) {
                                 Color(0xFFDCEFD9)
                             } else {
-                                Color(0xFFF1F6EF)
+                                Color(0xFFF3F3F0)
                             },
                             border = BorderStroke(
                                 if (isActive) 2.dp else 1.dp,
                                 if (isActive) {
                                     Color(0xFF48A65D)
                                 } else {
-                                    Color(0xFFCFE0CE)
+                                    Color(0xFFD6D8D3)
                                 }
                             )
                         ) {
@@ -1165,7 +1188,7 @@ private fun SavedSetsCard(
                                     color = if (isActive) {
                                         Color(0xFF1F6B3A)
                                     } else {
-                                        Color(0xFF24583B)
+                                        Color(0xFF505550)
                                     },
                                     fontSize = 13.sp,
                                     fontWeight = if (isActive) {
