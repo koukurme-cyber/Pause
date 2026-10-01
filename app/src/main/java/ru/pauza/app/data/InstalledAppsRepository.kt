@@ -44,6 +44,11 @@ class InstalledAppsRepository(private val context: Context) {
             .mapNotNull { info ->
                 val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
                 if (pkg in excluded) return@mapNotNull null
+                val appInfo = info.activityInfo?.applicationInfo ?: return@mapNotNull null
+                if (!appInfo.enabled || appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
+                    return@mapNotNull null
+                }
+                if (pm.getLaunchIntentForPackage(pkg) == null) return@mapNotNull null
                 val label = info.loadLabel(pm)?.toString()?.trim().orEmpty()
                 if (label.isBlank()) return@mapNotNull null
                 InstalledApp(
@@ -56,6 +61,30 @@ class InstalledAppsRepository(private val context: Context) {
             .sortedBy { it.label.lowercase() }
             .toList()
     }
+
+    fun loadAppsByPackages(packages: Set<String>): List<InstalledApp> =
+        packages.asSequence()
+            .mapNotNull { pkg ->
+                val info = runCatching {
+                    pm.getApplicationInfo(pkg, PackageManager.MATCH_ALL)
+                }.getOrNull() ?: return@mapNotNull null
+
+                if (!info.enabled || info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
+                    return@mapNotNull null
+                }
+                if (pm.getLaunchIntentForPackage(pkg) == null) return@mapNotNull null
+
+                val label = info.loadLabel(pm)?.toString()?.trim().orEmpty()
+                if (label.isBlank()) return@mapNotNull null
+
+                InstalledApp(
+                    label = label,
+                    packageName = pkg,
+                    icon = runCatching { info.loadIcon(pm).toBitmapSafe(96, 96) }.getOrNull(),
+                )
+            }
+            .sortedBy { it.label.lowercase() }
+            .toList()
 
     fun launch(app: InstalledApp): Boolean {
         val intent = when (app.launchType) {
