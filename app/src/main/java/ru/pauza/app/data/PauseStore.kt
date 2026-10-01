@@ -24,6 +24,21 @@ class PauseStore(context: Context) {
                 .apply()
         }
 
+    var activeSavedSetName: String?
+        get() = prefs.getString(KEY_ACTIVE_SAVED_SET_NAME, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) {
+                    remove(KEY_ACTIVE_SAVED_SET_NAME)
+                } else {
+                    putString(
+                        KEY_ACTIVE_SAVED_SET_NAME,
+                        value.trim().take(MAX_SAVED_APP_SET_NAME_LENGTH)
+                    )
+                }
+            }.apply()
+        }
+
     var sessionEndEpochMs: Long
         get() = prefs.getLong(KEY_SESSION_END, 0L)
         set(value) { prefs.edit().putLong(KEY_SESSION_END, value).apply() }
@@ -121,6 +136,7 @@ class PauseStore(context: Context) {
 
         private const val KEY_SELECTED = "selected_packages"
         private const val KEY_SAVED_APP_SETS = "saved_app_sets"
+        private const val KEY_ACTIVE_SAVED_SET_NAME = "active_saved_set_name"
         private const val KEY_SESSION_END = "session_end_epoch_ms"
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
