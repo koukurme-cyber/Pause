@@ -17,8 +17,13 @@ snapshot() {
 }
 
 pause_visible() {
-  adb shell dumpsys window windows 2>/dev/null |
-    python3 -c 'import re,sys; t=sys.stdin.read(); blocks=re.split(r"(?=  Window #\\d+ )", t); sys.exit(0 if any("package=ru.pauza.app" in b and "ty=APPLICATION_OVERLAY" in b and "isVisible=true" in b for b in blocks) else 1)'
+  # Current stable Pauza returns the user to MainActivity. The previous QA
+  # predicate searched for any APPLICATION_OVERLAY block containing Pauza text;
+  # on Android 15 this can accidentally span SystemUI's ShellDropTarget block
+  # and create a false positive even while Phone is genuinely foreground.
+  adb shell dumpsys activity activities 2>/dev/null |
+    grep -E -m1 "topResumedActivity=|ResumedActivity:" |
+    grep -Fq "ru.pauza.app/.MainActivity"
 }
 
 foreground_line() {
