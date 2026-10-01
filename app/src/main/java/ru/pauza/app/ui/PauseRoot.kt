@@ -1463,7 +1463,7 @@ private fun ReviewScreen(
                             items = reviewApps,
                             key = { it.launchType.name + ":" + it.packageName }
                         ) { app ->
-                            LauncherAppIcon(app = app)
+                            LauncherAppIcon(app = app, useSystemLauncherSize = true)
                         }
                     }
                 }
@@ -1965,8 +1965,8 @@ private fun HoldButton(
 
 private fun vibratePauseStart(context: android.content.Context) {
     val effect = android.os.VibrationEffect.createOneShot(
-        120L,
-        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+        160L,
+        200
     )
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         context.getSystemService(android.os.VibratorManager::class.java)
