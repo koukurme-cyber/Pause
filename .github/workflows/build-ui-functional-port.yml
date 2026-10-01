@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feedback-0.8.33
+      - feedback-0.8.34
 
 concurrency:
   group: pauza-ui-functional-port
@@ -43,8 +43,8 @@ jobs:
       - name: Set test version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 83/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.33-feedback"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 84/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.34-feedback"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -52,12 +52,12 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.33-feedback.apk
-          test -s Pauza-0.8.33-feedback.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.34-feedback.apk
+          test -s Pauza-0.8.34-feedback.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.33-feedback
-          path: Pauza-0.8.33-feedback.apk
+          name: Pauza-0.8.34-feedback
+          path: Pauza-0.8.34-feedback.apk
           if-no-files-found: error
