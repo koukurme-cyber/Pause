@@ -319,6 +319,7 @@ fun PauseRoot(
 
         Screen.SETTINGS -> SettingsScreen(
             apps = apps,
+            alwaysApps = alwaysApps,
             savedSets = savedSets,
             activeSavedSetName = activeSavedSetName,
             onUpsertSet = { index, name, packages ->
@@ -1452,6 +1453,7 @@ private fun formatDaysWheel(value: Int): String {
 @Composable
 private fun SavedSetEditorScreen(
     apps: List<InstalledApp>,
+    alwaysApps: List<InstalledApp>,
     initialName: String,
     initialPackages: Set<String>,
     existingNames: List<String>,
@@ -1467,13 +1469,14 @@ private fun SavedSetEditorScreen(
     }
     var searchQuery by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
 
-    val filteredApps = remember(apps, searchQuery) {
+    val filteredApps = remember(allApps, searchQuery) {
         val query = searchQuery.trim()
         if (query.isBlank()) {
-            apps
+            allApps
         } else {
-            apps.filter { it.label.contains(query, ignoreCase = true) }
+            allApps.filter { it.label.contains(query, ignoreCase = true) }
         }
     }
 
@@ -1609,17 +1612,20 @@ private fun SavedSetEditorScreen(
                             items = filteredApps,
                             key = { "set-editor:" + it.launchType.name + ":" + it.packageName }
                         ) { app ->
+                            val locked = app in alwaysApps
                             AppRow(
                                 app = app,
-                                checked = app.packageName in selectedPackages,
-                                locked = false,
+                                checked = locked || app.packageName in selectedPackages,
+                                locked = locked,
                                 onChecked = { enabled ->
-                                    selectedPackages =
-                                        if (enabled) {
-                                            selectedPackages + app.packageName
-                                        } else {
-                                            selectedPackages - app.packageName
-                                        }
+                                    if (!locked) {
+                                        selectedPackages =
+                                            if (enabled) {
+                                                selectedPackages + app.packageName
+                                            } else {
+                                                selectedPackages - app.packageName
+                                            }
+                                    }
                                 }
                             )
                         }
@@ -1656,6 +1662,7 @@ private fun SavedSetEditorScreen(
 @Composable
 private fun SettingsScreen(
     apps: List<InstalledApp>,
+    alwaysApps: List<InstalledApp>,
     savedSets: List<PauseStore.SavedAppSet>,
     activeSavedSetName: String?,
     onUpsertSet: (Int?, String, Set<String>) -> Unit,
@@ -1677,6 +1684,7 @@ private fun SettingsScreen(
         val editingSet = editingSetIndex?.let(savedSets::getOrNull)
         SavedSetEditorScreen(
             apps = apps,
+            alwaysApps = alwaysApps,
             initialName = editingSet?.name.orEmpty(),
             initialPackages = editingSet?.packages.orEmpty(),
             existingNames = savedSets
