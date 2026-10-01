@@ -28,6 +28,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -298,28 +299,38 @@ fun PauseRoot(
                 store.activeSavedSetName = null
             },
             onDuration = { duration = it },
-            onSaveSet = { name ->
-                if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
-                    savedSets = savedSets + PauseStore.SavedAppSet(
-                        name = name.trim().take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH),
-                        packages = selected,
-                    )
-                    store.savedAppSets = savedSets
-                }
-            },
             onApplySet = { index ->
                 val savedSet = savedSets.getOrNull(index)
                 if (savedSet != null) {
-                    if (activeSavedSetName == savedSet.name) {
-                        activeSavedSetName = null
-                        store.activeSavedSetName = null
-                    } else {
-                        val installedPackages = apps.map { it.packageName }.toSet()
-                        selected = savedSet.packages.intersect(installedPackages)
-                        store.selectedPackages = selected
-                        activeSavedSetName = savedSet.name
-                        store.activeSavedSetName = savedSet.name
-                    }
+                    val installedPackages = apps.map { it.packageName }.toSet()
+                    selected = savedSet.packages.intersect(installedPackages)
+                    store.selectedPackages = selected
+                    activeSavedSetName = savedSet.name
+                    store.activeSavedSetName = savedSet.name
+                }
+            },
+            onClearSet = {
+                activeSavedSetName = null
+                store.activeSavedSetName = null
+            },
+            onOpenSettings = { screen = Screen.SETTINGS },
+            onContinue = { screen = Screen.REVIEW },
+        )
+
+        Screen.SETTINGS -> SettingsScreen(
+            savedSets = savedSets,
+            selectedCount = selected.size,
+            activeSavedSetName = activeSavedSetName,
+            onSaveSet = { name ->
+                if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
+                    val savedSet = PauseStore.SavedAppSet(
+                        name = name.trim().take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH),
+                        packages = selected,
+                    )
+                    savedSets = savedSets + savedSet
+                    store.savedAppSets = savedSets
+                    activeSavedSetName = savedSet.name
+                    store.activeSavedSetName = savedSet.name
                 }
             },
             onDeleteSet = { index ->
@@ -333,11 +344,6 @@ fun PauseRoot(
                     }
                 }
             },
-            onOpenSettings = { screen = Screen.SETTINGS },
-            onContinue = { screen = Screen.REVIEW },
-        )
-
-        Screen.SETTINGS -> SettingsScreen(
             testModeEnabled = testModeEnabled,
             onTestModeChanged = { enabled ->
                 testModeEnabled = enabled
@@ -737,15 +743,12 @@ private fun SetupScreen(
     duration: PauseDuration,
     onToggle: (String, Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
-    onSaveSet: (String) -> Unit,
     onApplySet: (Int) -> Unit,
-    onDeleteSet: (Int) -> Unit,
+    onClearSet: () -> Unit,
     onOpenSettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var showSaveSetDialog by remember { mutableStateOf(false) }
-    var saveSetName by remember { mutableStateOf("") }
     val appListState = rememberLazyListState()
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
     val filteredApps = remember(allApps, searchQuery) {
@@ -861,22 +864,18 @@ private fun SetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            SavedSetsCard(
-                savedSets = savedSets,
-                activeSetIndex = activeSavedSetIndex,
-                canSave = savedSets.size < PauseStore.MAX_SAVED_APP_SETS,
-                selectedCount = selected.size,
-                onSave = {
-                    saveSetName = ""
-                    showSaveSetDialog = true
-                },
-                onApply = { index ->
-                    onApplySet(index)
-                    searchQuery = ""
-                },
-                onDelete = onDeleteSet,
-            )
+            if (savedSets.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                SavedSetSelector(
+                    savedSets = savedSets,
+                    activeSetIndex = activeSavedSetIndex,
+                    onApply = { index ->
+                        onApplySet(index)
+                        searchQuery = ""
+                    },
+                    onClear = onClearSet,
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
@@ -996,87 +995,250 @@ private fun SetupScreen(
             }
         }
 
-        if (showSaveSetDialog) {
-            val trimmedName = saveSetName.trim()
-            val duplicateName = savedSets.any {
-                it.name.equals(trimmedName, ignoreCase = true)
-            }
-            val canConfirm =
-                trimmedName.isNotBlank() &&
-                    !duplicateName &&
-                    savedSets.size < PauseStore.MAX_SAVED_APP_SETS
+    }
+}
 
-            AlertDialog(
-                onDismissRequest = {
-                    showSaveSetDialog = false
-                    saveSetName = ""
-                },
-                title = {
-                    Text(
-                        "Сохранить набор",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                text = {
-                    Column {
+@Composable
+private fun SavedSetSelector(
+    savedSets: List<PauseStore.SavedAppSet>,
+    activeSetIndex: Int,
+    onApply: (Int) -> Unit,
+    onClear: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val activeName = savedSets.getOrNull(activeSetIndex)?.name
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFFEFA).copy(alpha = .96f)
+        ),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, Color(0xFFD7DBD5))
+    ) {
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Набор",
+                    color = PauseMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.width(58.dp)
+                )
+                Text(
+                    activeName ?: "Без набора",
+                    color = if (activeName != null) {
+                        Color(0xFF1F6B3A)
+                    } else {
+                        Color(0xFF505550)
+                    },
+                    fontSize = 14.sp,
+                    fontWeight = if (activeName != null) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Medium
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "⌄",
+                    color = PauseMuted,
+                    fontSize = 20.sp,
+                    lineHeight = 20.sp
+                )
+            }
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.fillMaxWidth(.82f)
+            ) {
+                DropdownMenuItem(
+                    text = {
                         Text(
-                            "Набор запомнит выбранные сейчас приложения. Телефон и Сообщения сохранять не нужно — они всегда доступны.",
-                            color = PauseMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        OutlinedTextField(
-                            value = saveSetName,
-                            onValueChange = {
-                                saveSetName =
-                                    it.take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Название") },
-                            placeholder = { Text("Например, Работа") },
-                            singleLine = true,
-                            isError = duplicateName,
-                            supportingText = {
-                                when {
-                                    duplicateName -> Text("Такое название уже есть")
-                                    else -> Text(
-                                        "${saveSetName.length}/${PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH}"
-                                    )
-                                }
+                            "Без набора",
+                            fontWeight = if (activeName == null) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Normal
                             }
                         )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = canConfirm,
-                        onClick = {
-                            onSaveSet(trimmedName)
-                            showSaveSetDialog = false
-                            saveSetName = ""
+                    },
+                    leadingIcon = {
+                        if (activeName == null) {
+                            Text("✓", color = Color(0xFF2D7A45))
                         }
-                    ) {
-                        Text("Сохранить")
+                    },
+                    onClick = {
+                        onClear()
+                        expanded = false
                     }
-                },
-                dismissButton = {
-                    TextButton(
+                )
+
+                savedSets.forEachIndexed { index, savedSet ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                savedSet.name,
+                                fontWeight = if (index == activeSetIndex) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                }
+                            )
+                        },
+                        leadingIcon = {
+                            if (index == activeSetIndex) {
+                                Text("✓", color = Color(0xFF2D7A45))
+                            }
+                        },
                         onClick = {
-                            showSaveSetDialog = false
-                            saveSetName = ""
+                            onApply(index)
+                            expanded = false
                         }
-                    ) {
-                        Text("Отмена")
-                    }
+                    )
                 }
-            )
+            }
         }
     }
 }
 
 @Composable
-private fun SavedSetsCard(
+private fun SavedSetsSettingsCard(
+    savedSets: List<PauseStore.SavedAppSet>,
+    selectedCount: Int,
+    activeSavedSetName: String?,
+    onCreate: () -> Unit,
+    onDelete: (Int) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+        ),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+    ) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Наборы приложений",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "Сохраняют текущий выбор приложений. До ${PauseStore.MAX_SAVED_APP_SETS} наборов.",
+                        color = PauseMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+                if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
+                    TextButton(onClick = onCreate) {
+                        Text("Создать")
+                    }
+                }
+            }
+
+            if (savedSets.isEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Сейчас наборов нет. На главном экране селектор появится после создания первого набора.",
+                    color = PauseMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            } else {
+                Spacer(Modifier.height(12.dp))
+                savedSets.forEachIndexed { index, savedSet ->
+                    val isActive = savedSet.name == activeSavedSetName
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isActive) {
+                            Color(0xFFF0F7EE)
+                        } else {
+                            Color(0xFFF5F5F2)
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (isActive) Color(0xFFBBD8BE) else Color(0xFFDDDFDB)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    if (isActive) "✓ ${savedSet.name}" else savedSet.name,
+                                    color = if (isActive) {
+                                        Color(0xFF245E39)
+                                    } else {
+                                        Color(0xFF424642)
+                                    },
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isActive) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Medium
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${savedSet.packages.size} приложений",
+                                    color = PauseMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            IconButton(
+                                onClick = { onDelete(index) },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Text(
+                                    "×",
+                                    color = PauseMuted,
+                                    fontSize = 19.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (index != savedSets.lastIndex) {
+                        Spacer(Modifier.height(7.dp))
+                    }
+                }
+            }
+
+            if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Новый набор сохранит текущий выбор: $selectedCount приложений.",
+                    color = PauseMuted,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+
     savedSets: List<PauseStore.SavedAppSet>,
     activeSetIndex: Int,
     canSave: Boolean,
@@ -1411,6 +1573,11 @@ private fun formatDaysWheel(value: Int): String {
 
 @Composable
 private fun SettingsScreen(
+    savedSets: List<PauseStore.SavedAppSet>,
+    selectedCount: Int,
+    activeSavedSetName: String?,
+    onSaveSet: (String) -> Unit,
+    onDeleteSet: (Int) -> Unit,
     testModeEnabled: Boolean,
     onTestModeChanged: (Boolean) -> Unit,
     startVibrationEnabled: Boolean,
@@ -1422,6 +1589,8 @@ private fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
+    var showSaveSetDialog by remember { mutableStateOf(false) }
+    var saveSetName by remember { mutableStateOf("") }
 
     SoftScreenBackground {
         Column(
@@ -1455,7 +1624,25 @@ private fun SettingsScreen(
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+            SavedSetsSettingsCard(
+                savedSets = savedSets,
+                selectedCount = selectedCount,
+                activeSavedSetName = activeSavedSetName,
+                onCreate = {
+                    saveSetName = ""
+                    showSaveSetDialog = true
+                },
+                onDelete = onDeleteSet,
+            )
+
+            Spacer(Modifier.height(12.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1611,7 +1798,7 @@ private fun SettingsScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(20.dp))
 
             Text(
                 "Версия " + BuildConfig.VERSION_NAME,
@@ -1621,6 +1808,84 @@ private fun SettingsScreen(
                 color = PauseMuted,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
+            )
+            }
+        }
+
+        if (showSaveSetDialog) {
+            val trimmedName = saveSetName.trim()
+            val duplicateName = savedSets.any {
+                it.name.equals(trimmedName, ignoreCase = true)
+            }
+            val canConfirm =
+                trimmedName.isNotBlank() &&
+                    !duplicateName &&
+                    savedSets.size < PauseStore.MAX_SAVED_APP_SETS
+
+            AlertDialog(
+                onDismissRequest = {
+                    showSaveSetDialog = false
+                    saveSetName = ""
+                },
+                title = {
+                    Text(
+                        "Создать набор",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            "Будет сохранён текущий выбор: $selectedCount приложений. Телефон и Сообщения всегда доступны отдельно.",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        OutlinedTextField(
+                            value = saveSetName,
+                            onValueChange = {
+                                saveSetName =
+                                    it.take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Название") },
+                            placeholder = { Text("Например, Работа") },
+                            singleLine = true,
+                            isError = duplicateName,
+                            supportingText = {
+                                when {
+                                    duplicateName -> Text("Такое название уже есть")
+                                    else -> Text(
+                                        "${saveSetName.length}/${PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH}"
+                                    )
+                                }
+                            }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = canConfirm,
+                        onClick = {
+                            onSaveSet(trimmedName)
+                            showSaveSetDialog = false
+                            saveSetName = ""
+                        }
+                    ) {
+                        Text("Создать")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showSaveSetDialog = false
+                            saveSetName = ""
+                        }
+                    ) {
+                        Text("Отмена")
+                    }
+                }
             )
         }
     }
