@@ -725,6 +725,18 @@ private fun SetupScreen(
             allApps.filter { it.label.contains(query, ignoreCase = true) }
         }
     }
+    val installedSelectablePackages = remember(apps) {
+        apps.map { it.packageName }.toSet()
+    }
+    val activeSavedSetIndex = remember(
+        savedSets,
+        selected,
+        installedSelectablePackages
+    ) {
+        savedSets.indexOfFirst { savedSet ->
+            savedSet.packages.intersect(installedSelectablePackages) == selected
+        }
+    }
     val collapseThresholdPx = with(LocalDensity.current) {
         56.dp.roundToPx()
     }
@@ -827,6 +839,7 @@ private fun SetupScreen(
                     Spacer(Modifier.height(10.dp))
                     SavedSetsCard(
                         savedSets = savedSets,
+                        activeSetIndex = activeSavedSetIndex,
                         canSave = savedSets.size < PauseStore.MAX_SAVED_APP_SETS,
                         selectedCount = selected.size,
                         onSave = {
@@ -1042,6 +1055,7 @@ private fun SetupScreen(
 @Composable
 private fun SavedSetsCard(
     savedSets: List<PauseStore.SavedAppSet>,
+    activeSetIndex: Int,
     canSave: Boolean,
     selectedCount: Int,
     onSave: () -> Unit,
@@ -1070,10 +1084,25 @@ private fun SavedSetsCard(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                    val activeSetName =
+                        savedSets.getOrNull(activeSetIndex)?.name
                     Text(
-                        "${savedSets.size}/${PauseStore.MAX_SAVED_APP_SETS} · выбрано приложений: $selectedCount",
-                        color = PauseMuted,
-                        fontSize = 11.sp
+                        if (activeSetName != null) {
+                            "Выбран: $activeSetName"
+                        } else {
+                            "${savedSets.size}/${PauseStore.MAX_SAVED_APP_SETS} · выбрано приложений: $selectedCount"
+                        },
+                        color = if (activeSetName != null) {
+                            Color(0xFF2D7A45)
+                        } else {
+                            PauseMuted
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = if (activeSetName != null) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        }
                     )
                 }
 
@@ -1100,11 +1129,23 @@ private fun SavedSetsCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     savedSets.forEachIndexed { index, savedSet ->
+                        val isActive = index == activeSetIndex
                         Surface(
                             onClick = { onApply(index) },
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFF1F6EF),
-                            border = BorderStroke(1.dp, Color(0xFFCFE0CE))
+                            color = if (isActive) {
+                                Color(0xFFDCEFD9)
+                            } else {
+                                Color(0xFFF1F6EF)
+                            },
+                            border = BorderStroke(
+                                if (isActive) 2.dp else 1.dp,
+                                if (isActive) {
+                                    Color(0xFF48A65D)
+                                } else {
+                                    Color(0xFFCFE0CE)
+                                }
+                            )
                         ) {
                             Row(
                                 modifier = Modifier.padding(
@@ -1116,10 +1157,22 @@ private fun SavedSetsCard(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = savedSet.name,
-                                    color = Color(0xFF24583B),
+                                    text = if (isActive) {
+                                        "✓ ${savedSet.name}"
+                                    } else {
+                                        savedSet.name
+                                    },
+                                    color = if (isActive) {
+                                        Color(0xFF1F6B3A)
+                                    } else {
+                                        Color(0xFF24583B)
+                                    },
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = if (isActive) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Medium
+                                    },
                                     maxLines = 1
                                 )
                                 Spacer(Modifier.width(3.dp))
