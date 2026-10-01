@@ -33,6 +33,18 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_START_VIBRATION_ENABLED, true)
         set(value) { prefs.edit().putBoolean(KEY_START_VIBRATION_ENABLED, value).apply() }
 
+    var suppressNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SUPPRESS_NOTIFICATIONS_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_SUPPRESS_NOTIFICATIONS_ENABLED, value).apply() }
+
+    var notificationSilencingActive: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFICATION_SILENCING_ACTIVE, false)
+        set(value) { prefs.edit().putBoolean(KEY_NOTIFICATION_SILENCING_ACTIVE, value).apply() }
+
+    var previousInterruptionFilter: Int
+        get() = prefs.getInt(KEY_PREVIOUS_INTERRUPTION_FILTER, -1)
+        set(value) { prefs.edit().putInt(KEY_PREVIOUS_INTERRUPTION_FILTER, value).apply() }
+
     fun clearSession() {
         prefs.edit().remove(KEY_SESSION_END).apply()
     }
@@ -45,5 +57,8 @@ class PauseStore(context: Context) {
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
         private const val KEY_TEST_MODE_ENABLED = "test_mode_enabled"
         private const val KEY_START_VIBRATION_ENABLED = "start_vibration_enabled"
+        private const val KEY_SUPPRESS_NOTIFICATIONS_ENABLED = "suppress_notifications_enabled"
+        private const val KEY_NOTIFICATION_SILENCING_ACTIVE = "notification_silencing_active"
+        private const val KEY_PREVIOUS_INTERRUPTION_FILTER = "previous_interruption_filter"
     }
 }

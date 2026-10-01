@@ -77,6 +77,7 @@ import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
+import ru.pauza.app.domain.NotificationSilencer
 import ru.pauza.app.domain.UsageAccessMonitor
 import ru.pauza.app.model.InstalledApp
 import ru.pauza.app.ui.theme.PauseGreen
@@ -118,6 +119,9 @@ fun PauseRoot(
     var batteryUnrestricted by remember {
         mutableStateOf(BatteryOptimizationHelper.isUnrestricted(context))
     }
+    var notificationPolicyAccessGranted by remember {
+        mutableStateOf(NotificationSilencer.isPolicyAccessGranted(context))
+    }
     var restrictedSettingsConfirmed by remember {
         mutableStateOf(store.restrictedSettingsConfirmed)
     }
@@ -130,6 +134,7 @@ fun PauseRoot(
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
+            notificationPolicyAccessGranted = NotificationSilencer.isPolicyAccessGranted(context)
             delay(700)
         }
     }
@@ -188,6 +193,7 @@ fun PauseRoot(
     var duration by remember { mutableStateOf(PauseDuration()) }
     var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
     var startVibrationEnabled by remember { mutableStateOf(store.startVibrationEnabled) }
+    var suppressNotificationsEnabled by remember { mutableStateOf(store.suppressNotificationsEnabled) }
 
     val now = System.currentTimeMillis()
     var sessionEnd by remember {
@@ -199,12 +205,17 @@ fun PauseRoot(
 
     LaunchedEffect(Unit) {
         if (sessionEnd > System.currentTimeMillis()) {
+            NotificationSilencer.applyForPause(context, store)
             val restored = withContext(Dispatchers.IO) {
                 appsRepository.loadAppsByPackages(selected) to appsRepository.loadAlwaysAllowedApps()
             }
             apps = restored.first
             alwaysApps = restored.second
             loading = false
+        }
+
+        if (sessionEnd <= System.currentTimeMillis()) {
+            NotificationSilencer.restoreAfterPause(context, store)
         }
 
         val loaded = withContext(Dispatchers.IO) {
@@ -280,6 +291,18 @@ fun PauseRoot(
                 startVibrationEnabled = enabled
                 store.startVibrationEnabled = enabled
             },
+            suppressNotificationsEnabled = suppressNotificationsEnabled,
+            notificationPolicyAccessGranted = notificationPolicyAccessGranted,
+            onSuppressNotificationsChanged = { enabled ->
+                suppressNotificationsEnabled = enabled
+                store.suppressNotificationsEnabled = enabled
+                if (enabled && !NotificationSilencer.isPolicyAccessGranted(context)) {
+                    NotificationSilencer.openPolicyAccessSettings(context)
+                }
+            },
+            onOpenNotificationPolicyAccess = {
+                NotificationSilencer.openPolicyAccessSettings(context)
+            },
             onBack = { screen = Screen.SETUP },
         )
 
@@ -301,6 +324,7 @@ fun PauseRoot(
                 if (startVibrationEnabled) {
                     vibratePauseStart(context)
                 }
+                NotificationSilencer.applyForPause(context, store)
                 screen = Screen.ACTIVE
             }
         )
@@ -314,12 +338,14 @@ fun PauseRoot(
             onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
+                NotificationSilencer.restoreAfterPause(context, store)
                 store.clearSession()
                 sessionEnd = 0L
                 screen = Screen.SETUP
             },
             onTapExit = {
                 blocker.stop()
+                NotificationSilencer.restoreAfterPause(context, store)
                 store.clearSession()
                 sessionEnd = 0L
                 screen = Screen.SETUP
@@ -1083,6 +1109,10 @@ private fun SettingsScreen(
     onTestModeChanged: (Boolean) -> Unit,
     startVibrationEnabled: Boolean,
     onStartVibrationChanged: (Boolean) -> Unit,
+    suppressNotificationsEnabled: Boolean,
+    notificationPolicyAccessGranted: Boolean,
+    onSuppressNotificationsChanged: (Boolean) -> Unit,
+    onOpenNotificationPolicyAccess: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -1207,6 +1237,71 @@ private fun SettingsScreen(
                             uncheckedBorderColor = Color(0xFFCBD0C8),
                         )
                     )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Не беспокоить во время Паузы",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                "Убирает звуки и всплывающие уведомления. Сами уведомления не удаляются и останутся в шторке.",
+                                color = PauseMuted,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Switch(
+                            checked = suppressNotificationsEnabled,
+                            onCheckedChange = onSuppressNotificationsChanged,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                checkedTrackColor = Color(0xFF36B34A),
+                                checkedBorderColor = Color(0xFF36B34A),
+                                uncheckedThumbColor = PauseMuted,
+                                uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                                uncheckedBorderColor = Color(0xFFCBD0C8),
+                            )
+                        )
+                    }
+
+                    if (suppressNotificationsEnabled && !notificationPolicyAccessGranted) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Нужно один раз разрешить «Паузе» управлять режимом «Не беспокоить».",
+                            color = Color(0xFF8E2B22),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onOpenNotificationPolicyAccess,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("Разрешить доступ")
+                        }
+                    }
                 }
             }
 

@@ -80,6 +80,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            NotificationSilencer.restoreAfterPause(this, store)
             hideOverlay()
             return
         }
