@@ -29,6 +29,10 @@ class PauseStore(context: Context) {
         get() = prefs.getBoolean(KEY_TEST_MODE_ENABLED, false)
         set(value) { prefs.edit().putBoolean(KEY_TEST_MODE_ENABLED, value).apply() }
 
+    var blockShortVideos: Boolean
+        get() = prefs.getBoolean(KEY_BLOCK_SHORT_VIDEOS, false)
+        set(value) { prefs.edit().putBoolean(KEY_BLOCK_SHORT_VIDEOS, value).apply() }
+
     var startVibrationEnabled: Boolean
         get() = prefs.getBoolean(KEY_START_VIBRATION_ENABLED, true)
         set(value) { prefs.edit().putBoolean(KEY_START_VIBRATION_ENABLED, value).apply() }
@@ -56,6 +60,7 @@ class PauseStore(context: Context) {
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
         private const val KEY_TEST_MODE_ENABLED = "test_mode_enabled"
+        private const val KEY_BLOCK_SHORT_VIDEOS = "block_short_videos"
         private const val KEY_START_VIBRATION_ENABLED = "start_vibration_enabled"
         private const val KEY_SUPPRESS_NOTIFICATIONS_ENABLED = "suppress_notifications_enabled"
         private const val KEY_NOTIFICATION_SILENCING_ACTIVE = "notification_silencing_active"
