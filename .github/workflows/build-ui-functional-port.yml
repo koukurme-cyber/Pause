@@ -43,8 +43,8 @@ jobs:
       - name: Set test version
         shell: bash
         run: |
-          sed -i 's/versionCode = 11/versionCode = 81/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.31-stablecore"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 82/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.32-stablecore-settings"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
@@ -52,12 +52,12 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.31-stablecore.apk
-          test -s Pauza-0.8.31-stablecore.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.32-stablecore-settings.apk
+          test -s Pauza-0.8.32-stablecore-settings.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.31-stablecore
-          path: Pauza-0.8.31-stablecore.apk
+          name: Pauza-0.8.32-stablecore-settings
+          path: Pauza-0.8.32-stablecore-settings.apk
           if-no-files-found: error
