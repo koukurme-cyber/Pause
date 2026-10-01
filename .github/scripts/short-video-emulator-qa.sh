@@ -27,7 +27,8 @@ pause_visible() {
 }
 
 foreground_line() {
-  adb shell dumpsys activity activities 2>/dev/null | grep -m1 "mResumedActivity" || true
+  adb shell dumpsys activity activities 2>/dev/null |
+    grep -E -m1 "topResumedActivity=|mResumedActivity=|ResumedActivity:" || true
 }
 
 fail() {
