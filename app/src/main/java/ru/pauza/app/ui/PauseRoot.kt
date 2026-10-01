@@ -187,6 +187,7 @@ fun PauseRoot(
     var selected by remember { mutableStateOf(store.selectedPackages) }
     var duration by remember { mutableStateOf(PauseDuration()) }
     var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
+    var startVibrationEnabled by remember { mutableStateOf(store.startVibrationEnabled) }
 
     val now = System.currentTimeMillis()
     var sessionEnd by remember {
@@ -274,6 +275,11 @@ fun PauseRoot(
                 testModeEnabled = enabled
                 store.testModeEnabled = enabled
             },
+            startVibrationEnabled = startVibrationEnabled,
+            onStartVibrationChanged = { enabled ->
+                startVibrationEnabled = enabled
+                store.startVibrationEnabled = enabled
+            },
             onBack = { screen = Screen.SETUP },
         )
 
@@ -292,6 +298,9 @@ fun PauseRoot(
                     selected + appsRepository.alwaysAllowedPackages(),
                     sessionEnd
                 )
+                if (startVibrationEnabled) {
+                    vibratePauseStart(context)
+                }
                 screen = Screen.ACTIVE
             }
         )
@@ -1072,6 +1081,8 @@ private fun formatDaysWheel(value: Int): String {
 private fun SettingsScreen(
     testModeEnabled: Boolean,
     onTestModeChanged: (Boolean) -> Unit,
+    startVibrationEnabled: Boolean,
+    onStartVibrationChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -1150,6 +1161,50 @@ private fun SettingsScreen(
                             disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.62f),
                             disabledCheckedTrackColor = Color(0xFF36B34A).copy(alpha = 0.42f),
                             disabledCheckedBorderColor = Color(0xFF36B34A).copy(alpha = 0.32f),
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Вибрация при запуске",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Короткая вибрация подтверждает, что Пауза действительно запущена.",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Switch(
+                        checked = startVibrationEnabled,
+                        onCheckedChange = onStartVibrationChanged,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = Color(0xFF36B34A),
+                            checkedBorderColor = Color(0xFF36B34A),
+                            uncheckedThumbColor = PauseMuted,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                            uncheckedBorderColor = Color(0xFFCBD0C8),
                         )
                     )
                 }
@@ -1802,7 +1857,7 @@ private fun HoldButton(
             if (pressing) {
                 "Продолжайте удерживать…"
             } else {
-                "Начать Паузу"
+                "Удерживайте 2 секунды, чтобы начать"
             },
             color = Color.White,
             fontWeight = FontWeight.SemiBold,
@@ -1810,6 +1865,22 @@ private fun HoldButton(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
+    }
+}
+
+private fun vibratePauseStart(context: android.content.Context) {
+    val effect = android.os.VibrationEffect.createOneShot(
+        120L,
+        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        context.getSystemService(android.os.VibratorManager::class.java)
+            ?.defaultVibrator
+            ?.vibrate(effect)
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.os.Vibrator::class.java)
+            ?.vibrate(effect)
     }
 }
 
