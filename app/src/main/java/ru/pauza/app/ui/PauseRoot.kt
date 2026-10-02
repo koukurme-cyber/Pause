@@ -1746,22 +1746,6 @@ private fun SettingsScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
-            SavedSetsSettingsCard(
-                savedSets = savedSets,
-                activeSavedSetName = activeSavedSetName,
-                onCreate = {
-                    editingSetIndex = null
-                    creatingSet = true
-                },
-                onEdit = { index ->
-                    editingSetIndex = index
-                    creatingSet = false
-                },
-                onDelete = onDeleteSet,
-            )
-
-            Spacer(Modifier.height(12.dp))
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -1915,6 +1899,22 @@ private fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            SavedSetsSettingsCard(
+                savedSets = savedSets,
+                activeSavedSetName = activeSavedSetName,
+                onCreate = {
+                    editingSetIndex = null
+                    creatingSet = true
+                },
+                onEdit = { index ->
+                    editingSetIndex = index
+                    creatingSet = false
+                },
+                onDelete = onDeleteSet,
+            )
 
             Spacer(Modifier.height(20.dp))
 
