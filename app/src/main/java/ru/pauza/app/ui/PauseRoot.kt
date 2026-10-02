@@ -1175,15 +1175,7 @@ private fun SavedSetsSettingsCard(
                 }
             }
 
-            if (savedSets.isEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Сейчас наборов нет. На главном экране селектор появится после создания первого набора.",
-                    color = PauseMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-            } else {
+            if (savedSets.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 savedSets.forEachIndexed { index, savedSet ->
                     val isActive = savedSet.name == activeSavedSetName
@@ -1223,11 +1215,6 @@ private fun SavedSetsSettingsCard(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    "${savedSet.packages.size} приложений · нажмите, чтобы изменить",
-                                    color = PauseMuted,
-                                    fontSize = 11.sp
-                                )
                             }
                             IconButton(
                                 onClick = { onDelete(index) },
@@ -1248,14 +1235,6 @@ private fun SavedSetsSettingsCard(
                 }
             }
 
-            if (savedSets.size < PauseStore.MAX_SAVED_APP_SETS) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Имя и приложения для нового набора выбираются на следующем экране.",
-                    color = PauseMuted,
-                    fontSize = 11.sp
-                )
-            }
         }
     }
 }
