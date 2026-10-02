@@ -41,13 +41,8 @@ fail() {
   exit 1
 }
 
-wait_for_pause_visible() {
-  local label="$1"
+pause_visible_stably() {
   local stable_samples=0
-
-  # Recents/Home transitions on the Android 15 Pixel image can briefly report
-  # Pause as top-resumed before Launcher finishes its animation and steals focus
-  # again. Do not accept a one-sample transient as successful protection.
   for _ in $(seq 1 28); do
     if pause_visible; then
       stable_samples=$((stable_samples + 1))
@@ -59,6 +54,18 @@ wait_for_pause_visible() {
     fi
     sleep 0.25
   done
+  return 1
+}
+
+wait_for_pause_visible() {
+  local label="$1"
+
+  # Recents/Home transitions on the Android 15 Pixel image can briefly report
+  # Pause as top-resumed before Launcher finishes its animation and steals focus
+  # again. Do not accept a one-sample transient as successful protection.
+  if pause_visible_stably; then
+    return 0
+  fi
   fail "$label: Pause did not remain foreground stably"
 }
 
@@ -284,56 +291,14 @@ adb shell input keyevent KEYCODE_HOME
 wait_for_pause_visible "Home"
 snapshot "home"
 
-echo "Test 3: Recents is tolerated only as a transient system surface"
-open_allowed_phone "Phone before Recents"
-adb shell input keyevent KEYCODE_APP_SWITCH
-sleep 0.8
-FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test3-result.txt"
-
-# The verified 0.7.5 SystemUI fix deliberately does not fight transient Recents.
-# On Pixel/Android 15 Recents is hosted by NexusLauncher, so topResumedActivity
-# can legitimately be the launcher while the overview surface is open.
-# The actual invariant is that once we leave that transient surface (Home),
-# normal enforcement resumes and Pause immediately takes over again.
-if pause_visible; then
-  echo "Recents result: Pause already resumed" | tee -a "$ARTIFACT_DIR/test3-result.txt"
-elif echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
-  echo "Recents result: allowed Phone remained resumed" | tee -a "$ARTIFACT_DIR/test3-result.txt"
-elif echo "$FG" | grep -Fq "com.google.android.apps.nexuslauncher"; then
-  echo "Recents result: Pixel launcher is hosting transient overview" | tee -a "$ARTIFACT_DIR/test3-result.txt"
-else
-  fail "Recents exposed an unexpected non-system app: $FG"
-fi
-
-# Home protection is already asserted independently in Test 2. Pixel's Android 15
-# launcher can keep the Recents host resumed after a second Home press even though
-# no third-party app escaped. Restore Pause deterministically so this known
-# emulator quirk cannot prevent the short-video fixture from running.
-adb shell am start -W -n "$ACTIVITY" >/dev/null
-wait_for_pause_visible "restore after Recents"
-
-echo "Test 4: Back cannot escape from allowed Phone to launcher"
-open_allowed_phone "Phone before Back"
-adb shell input keyevent KEYCODE_BACK
-sleep 0.7
-if ! pause_visible; then
-  FG="$(foreground_line)"
-  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
-    fail "Back escaped without Pause protection: $FG"
-  fi
-fi
-adb shell input keyevent KEYCODE_HOME
-wait_for_pause_visible "Home after Back"
-
-echo "Test 5: real Accessibility detection exits an Instagram-like Reels player"
+echo "Test 3: real Accessibility detection exits an Instagram-like Reels player"
 adb logcat -c
 adb shell am force-stop "$FIXTURE_PKG" || true
 adb shell am start -W -n "$FIXTURE_ACTIVITY" >/dev/null
 wait_for_fixture_state_count "STATE_REELS_PLAYER" 1 "direct Reels fixture launch"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 1 "direct Reels redirect"
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test5-direct-reels.txt"
+echo "$FG" | tee "$ARTIFACT_DIR/test3-direct-reels.txt"
 if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
   fail "Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
 fi
@@ -348,13 +313,58 @@ wait_for_fixture_state_count "STATE_REELS_PLAYER" 2 "Reels navigation click"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 2 "Reels navigation redirect"
 sleep 0.8
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test5-click-reels.txt"
+echo "$FG" | tee "$ARTIFACT_DIR/test3-click-reels.txt"
 if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
   fail "clicked Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
 fi
 snapshot "reels-click-safe"
 
+echo "Test 4: Back cannot escape from allowed Phone to launcher"
+adb shell input keyevent KEYCODE_HOME
+wait_for_pause_visible "Home after Reels"
+open_allowed_phone "Phone before Back"
+adb shell input keyevent KEYCODE_BACK
+sleep 0.7
+if ! pause_visible; then
+  FG="$(foreground_line)"
+  if ! echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
+    fail "Back escaped without Pause protection: $FG"
+  fi
+fi
+adb shell input keyevent KEYCODE_HOME
+wait_for_pause_visible "Home after Back"
+
+echo "Test 5: Recents diagnostic on Android 15 Pixel launcher"
+open_allowed_phone "Phone before Recents"
+adb shell input keyevent KEYCODE_APP_SWITCH
+sleep 0.8
+FG="$(foreground_line)"
+echo "$FG" | tee "$ARTIFACT_DIR/test5-recents-result.txt"
+
+if pause_visible; then
+  echo "Recents result: Pause already resumed" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
+elif echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
+  echo "Recents result: allowed Phone remained resumed" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
+elif echo "$FG" | grep -Fq "com.google.android.apps.nexuslauncher"; then
+  echo "Recents result: Pixel launcher is hosting transient overview" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
+else
+  fail "Recents exposed an unexpected non-system app: $FG"
+fi
+
+adb shell input keyevent KEYCODE_HOME
+if pause_visible_stably; then
+  echo "Recents recovery: Pause resumed stably" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
+else
+  # This Pixel/API 35 launcher behavior predates the short-video experiment and
+  # also reproduces on the old 0.8.35 emulator suite. Keep it diagnostic here so
+  # it cannot mask the feature-specific Accessibility test above.
+  echo "Recents recovery warning: Pixel launcher kept foreground; restarting Pause for remaining regression checks" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
+  adb shell am start -W -n "$ACTIVITY" >/dev/null
+  wait_for_pause_visible "Recovery after emulator Recents"
+fi
+
 echo "Test 6: 30-cycle real Phone/Home stress"
+
 for i in $(seq 1 30); do
   open_allowed_phone "stress Phone $i"
 
