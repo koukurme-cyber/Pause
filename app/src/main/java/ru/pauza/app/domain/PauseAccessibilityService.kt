@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -17,6 +18,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
@@ -44,6 +46,24 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
+
+    private var shortVideoNavigating = false
+    private var shortVideoBlockedPackage: String? = null
+    private var shortVideoRetryAt = 0L
+    private var shortVideoRetryAttempts = 0
+    private var pendingShortVideoNotice = false
+    private var shortVideoCooldownUntil = 0L
+    private var shortVideoUsesDetectedPlayerEscape = false
+    private var shortVideoExitCandidateAt = 0L
+    private var lastShortContentScanAt = 0L
+    private var lastShortNoticeShownAt = 0L
+    private var shortNoticeOverlay: View? = null
+    private var shortNoticeDismissRunnable: Runnable? = null
+    private var shortNoticeHideAt = 0L
+    private var shortNoticePackage: String? = null
+    private var shortNoticeArmed = true
+    private var shortSafeSince = 0L
+
     private var wasUnavailableForUnlock = false
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
@@ -78,8 +98,12 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
+        expireShortNoticeIfNeeded()
+
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
+            resetShortVideoNavigation()
+            hideShortNotice()
             NotificationSilencer.restoreAfterPause(this, store)
             hideOverlay()
             return
@@ -89,6 +113,8 @@ class PauseAccessibilityService : AccessibilityService() {
         val deviceLocked = keyguardManager.isKeyguardLocked || keyguardManager.isDeviceLocked
 
         if (!screenInteractive || deviceLocked) {
+            resetShortVideoNavigation()
+            hideShortNotice()
             wasUnavailableForUnlock = true
             resumeProtectionAt = 0L
             hideOverlay()
@@ -98,11 +124,13 @@ class PauseAccessibilityService : AccessibilityService() {
         if (wasUnavailableForUnlock) {
             wasUnavailableForUnlock = false
             resumeProtectionAt = SystemClock.elapsedRealtime() + UNLOCK_GRACE_MS
+            hideShortNotice()
             hideOverlay()
             return
         }
 
         if (SystemClock.elapsedRealtime() < resumeProtectionAt) {
+            hideShortNotice()
             hideOverlay()
             return
         }
@@ -112,11 +140,22 @@ class PauseAccessibilityService : AccessibilityService() {
         // Once the overlay closes, normal foreground enforcement resumes and any
         // disallowed app selected from it is caught immediately.
         if (hasActiveSystemUiSurface(event)) {
+            hideShortNotice()
             hideOverlay()
             return
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+
+        if (shortNoticePackage != null && foregroundPackage != shortNoticePackage) {
+            hideShortNotice()
+            shortNoticeArmed = true
+            shortSafeSince = 0L
+        }
+        if (shortVideoBlockedPackage != null && foregroundPackage != shortVideoBlockedPackage) {
+            resetShortVideoNavigation()
+            hideShortNotice()
+        }
 
         // System UI itself is allowed, but a launcher is not: pressing Home may
         // briefly show the normal desktop, then Usage Access detects that launcher
@@ -135,12 +174,356 @@ class PauseAccessibilityService : AccessibilityService() {
 
         if (foregroundPackage in allowed) {
             hideOverlay()
+
+            if (store.blockShortVideos && ShortVideoDetector.isSupportedPackage(foregroundPackage)) {
+                val nowElapsed = SystemClock.elapsedRealtime()
+
+                // Accessibility window data can disappear briefly during navigation.
+                // Missing data is treated as unknown, never as proof that the user
+                // successfully left a short-video player.
+                val appRoot = resolveApplicationRoot(foregroundPackage)
+                if (appRoot == null) {
+                    shortSafeSince = 0L
+                    shortVideoExitCandidateAt = 0L
+                    return
+                }
+
+                val earlyEntryAction = ShortVideoDetector.isShortEntryAction(
+                    packageName = foregroundPackage,
+                    event = event,
+                )
+
+                if (earlyEntryAction) {
+                    shortNoticeArmed = true
+                    shortSafeSince = 0L
+                    if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
+                        beginShortVideoRedirect(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = appRoot,
+                            detectedPlayer = false,
+                        )
+                    }
+                    return
+                }
+
+                val shouldScanShortVideo =
+                    ShortVideoDetector.usesBackgroundScreenDetection(foregroundPackage) &&
+                        (
+                            shortVideoNavigating ||
+                                event?.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                                nowElapsed - lastShortContentScanAt >= SHORT_CONTENT_SCAN_THROTTLE_MS
+                        )
+
+                if (!shouldScanShortVideo) return
+
+                if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                    lastShortContentScanAt = nowElapsed
+                }
+
+                val shortVideoDetected = ShortVideoDetector.isShortVideoScreen(
+                    packageName = foregroundPackage,
+                    root = appRoot,
+                    event = event,
+                )
+
+                if (shortVideoDetected) {
+                    shortVideoExitCandidateAt = 0L
+                    shortSafeSince = 0L
+                    shortVideoUsesDetectedPlayerEscape = true
+
+                    if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
+                        beginShortVideoRedirect(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = appRoot,
+                            detectedPlayer = true,
+                        )
+                    } else if (
+                        shortVideoNavigating &&
+                        nowElapsed >= shortVideoRetryAt &&
+                        foregroundPackage == shortVideoBlockedPackage &&
+                        shortVideoRetryAttempts < SHORT_VIDEO_MAX_RETRIES
+                    ) {
+                        shortVideoRetryAttempts += 1
+                        shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
+                        navigateShortVideoEscape(
+                            foregroundPackage = foregroundPackage,
+                            appRoot = appRoot,
+                        )
+                    }
+                    return
+                }
+
+                if (!shortVideoNavigating) {
+                    if (ShortVideoDetector.isConfirmedSafeSurface(foregroundPackage, appRoot)) {
+                        if (shortSafeSince == 0L) shortSafeSince = nowElapsed
+                        if (nowElapsed - shortSafeSince >= SHORT_VIDEO_NOTICE_REARM_MS) {
+                            shortNoticeArmed = true
+                        }
+                    } else {
+                        shortSafeSince = 0L
+                    }
+                }
+
+                if (
+                    shortVideoNavigating &&
+                    foregroundPackage == shortVideoBlockedPackage
+                ) {
+                    val safeSurfaceConfirmed =
+                        ShortVideoDetector.isConfirmedSafeSurface(
+                            packageName = foregroundPackage,
+                            root = appRoot,
+                        )
+
+                    if (!safeSurfaceConfirmed) {
+                        shortVideoExitCandidateAt = 0L
+
+                        if (
+                            nowElapsed >= shortVideoRetryAt &&
+                            shortVideoRetryAttempts < SHORT_VIDEO_MAX_RETRIES
+                        ) {
+                            shortVideoRetryAttempts += 1
+                            shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
+                            navigateShortVideoEscape(
+                                foregroundPackage = foregroundPackage,
+                                appRoot = appRoot,
+                            )
+                        }
+                        return
+                    }
+
+                    if (shortVideoExitCandidateAt == 0L) {
+                        shortVideoExitCandidateAt = nowElapsed
+                        return
+                    }
+
+                    if (nowElapsed - shortVideoExitCandidateAt < SHORT_VIDEO_EXIT_CONFIRM_MS) {
+                        return
+                    }
+
+                    shortVideoNavigating = false
+                    shortVideoRetryAttempts = 0
+                    shortVideoBlockedPackage = null
+                    shortVideoUsesDetectedPlayerEscape = false
+                    shortVideoExitCandidateAt = 0L
+                    shortVideoCooldownUntil = 0L
+
+                    if (pendingShortVideoNotice) {
+                        pendingShortVideoNotice = false
+                        if (
+                            shortNoticeArmed &&
+                            nowElapsed - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS
+                        ) {
+                            showShortVideoOverlay(foregroundPackage)
+                        }
+                    }
+                }
+            } else if (shortVideoNavigating) {
+                resetShortVideoNavigation()
+            }
+
             return
         }
 
         showOverlay(end)
         returnToPause()
     }
+
+    private fun beginShortVideoRedirect(
+        foregroundPackage: String,
+        appRoot: android.view.accessibility.AccessibilityNodeInfo?,
+        detectedPlayer: Boolean,
+    ) {
+        val now = SystemClock.elapsedRealtime()
+
+        shortVideoUsesDetectedPlayerEscape = detectedPlayer
+        shortVideoNavigating = true
+        shortVideoBlockedPackage = foregroundPackage
+        shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
+        shortVideoRetryAttempts = 0
+        shortVideoExitCandidateAt = 0L
+        shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
+        pendingShortVideoNotice = true
+
+        navigateShortVideoEscape(
+            foregroundPackage = foregroundPackage,
+            appRoot = appRoot,
+        )
+    }
+
+    private fun navigateShortVideoEscape(
+        foregroundPackage: String,
+        appRoot: android.view.accessibility.AccessibilityNodeInfo?,
+    ): Boolean =
+        if (shortVideoUsesDetectedPlayerEscape) {
+            ShortVideoSafeNavigator.escapeDetectedPlayer(
+                service = this,
+                packageName = foregroundPackage,
+                root = appRoot,
+                attempt = shortVideoRetryAttempts,
+            )
+        } else {
+            ShortVideoSafeNavigator.navigateToSafeSurface(
+                service = this,
+                packageName = foregroundPackage,
+                root = appRoot,
+            )
+        }
+
+    private fun resetShortVideoNavigation() {
+        shortVideoNavigating = false
+        shortVideoBlockedPackage = null
+        shortVideoRetryAt = 0L
+        shortVideoRetryAttempts = 0
+        pendingShortVideoNotice = false
+        shortVideoCooldownUntil = 0L
+        shortVideoUsesDetectedPlayerEscape = false
+        shortVideoExitCandidateAt = 0L
+        lastShortContentScanAt = 0L
+        shortSafeSince = 0L
+        shortNoticeArmed = true
+    }
+
+    private fun showShortVideoOverlay(ownerPackage: String) {
+        if (shortNoticeOverlay != null) return
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(12), dp(12))
+            background = roundedBackground(
+                color = Color.WHITE,
+                radiusDp = 22f
+            )
+            elevation = dp(8).toFloat()
+        }
+
+        val icon = TextView(this).apply {
+            text = "Ⅱ"
+            gravity = Gravity.CENTER
+            textSize = 18f
+            setTextColor(Color.rgb(57, 103, 70))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = roundedBackground(
+                color = Color.rgb(232, 241, 226),
+                radiusDp = 999f
+            )
+        }
+        card.addView(
+            icon,
+            LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                marginEnd = dp(12)
+            }
+        )
+
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val title = TextView(this).apply {
+            text = "Короткие видео заблокированы"
+            textSize = 14f
+            setTextColor(Color.rgb(25, 27, 26))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+        }
+        val body = TextView(this).apply {
+            text = "Во время Паузы Shorts, Reels и короткие видео RUTUBE недоступны."
+            textSize = 11.5f
+            setTextColor(Color.rgb(118, 121, 119))
+            maxLines = 2
+        }
+        copy.addView(title)
+        copy.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(3)
+            }
+        )
+
+        card.addView(
+            copy,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        val container = FrameLayout(this).apply {
+            setPadding(dp(18), 0, dp(18), 0)
+            addView(
+                card,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM
+            x = 0
+            y = dp(24)
+        }
+
+        runCatching {
+            getSystemService(WindowManager::class.java).addView(container, params)
+            shortNoticeOverlay = container
+            shortNoticePackage = ownerPackage
+            shortNoticeArmed = false
+            lastShortNoticeShownAt = SystemClock.elapsedRealtime()
+            shortNoticeHideAt =
+                lastShortNoticeShownAt + SHORT_VIDEO_NOTICE_DURATION_MS
+
+            shortNoticeDismissRunnable?.let(handler::removeCallbacks)
+            shortNoticeDismissRunnable = Runnable {
+                expireShortNoticeIfNeeded()
+            }.also { runnable ->
+                handler.postDelayed(
+                    runnable,
+                    SHORT_VIDEO_NOTICE_DURATION_MS
+                )
+            }
+        }
+    }
+
+    private fun resolveApplicationRoot(targetPackage: String) =
+        windows
+            .asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .sortedByDescending { it.isFocused }
+            .mapNotNull { it.root }
+            .firstOrNull { it.packageName?.toString() == targetPackage }
+            ?: rootInActiveWindow?.takeIf {
+                it.packageName?.toString() == targetPackage
+            }
+
+    private fun roundedBackground(
+        color: Int,
+        radiusDp: Float,
+    ) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(color)
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    private fun dp(value: Float): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun hasActiveSystemUiSurface(event: AccessibilityEvent?): Boolean {
         val eventPackage = event?.packageName?.toString()
@@ -258,10 +641,34 @@ class PauseAccessibilityService : AccessibilityService() {
         overlayTimer = null
     }
 
+    private fun expireShortNoticeIfNeeded() {
+        if (
+            shortNoticeOverlay != null &&
+            shortNoticeHideAt > 0L &&
+            SystemClock.elapsedRealtime() >= shortNoticeHideAt
+        ) {
+            hideShortNotice()
+        }
+    }
+
+    private fun hideShortNotice() {
+        shortNoticeDismissRunnable?.let(handler::removeCallbacks)
+        shortNoticeDismissRunnable = null
+        shortNoticeHideAt = 0L
+        shortNoticePackage = null
+
+        val current = shortNoticeOverlay ?: return
+        runCatching {
+            getSystemService(WindowManager::class.java).removeView(current)
+        }
+        shortNoticeOverlay = null
+    }
+
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
+        hideShortNotice()
         hideOverlay()
         super.onDestroy()
     }
@@ -271,6 +678,15 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
+
+        private const val SHORT_VIDEO_RETRY_DELAY_MS = 420L
+        private const val SHORT_VIDEO_MAX_RETRIES = 4
+        private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
+        private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
+        private const val SHORT_VIDEO_NOTICE_REARM_MS = 2_000L
+        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 1_600L
+        private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 3_000L
+        private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 300L
     }
 }
 
