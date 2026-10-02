@@ -121,6 +121,25 @@ class ShortVideoRegressionTest {
         verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     }
 
+    @Test fun visibleSafeTabWinsBeforeStandaloneBackFallback() {
+        val tab = safeTab()
+        `when`(tab.contentDescription).thenReturn("Home")
+        `when`(tab.isClickable).thenReturn(true)
+        `when`(tab.performAction(AccessibilityNodeInfo.ACTION_CLICK)).thenReturn(true)
+
+        assertTrue(
+            ShortVideoSafeNavigator.escapeDetectedPlayer(
+                service,
+                instagram,
+                node(children = listOf(tab, player())),
+                attempt = 1,
+            )
+        )
+
+        verify(tab).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        verify(service, never()).performGlobalAction(anyInt())
+    }
+
     @Test fun contentDescriptionOnlySearchButtonCanBeUsed() {
         val tab = safeTab()
         `when`(tab.contentDescription).thenReturn("Поиск")

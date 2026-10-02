@@ -81,12 +81,9 @@ object ShortVideoSafeNavigator {
             packageName == INSTAGRAM_PACKAGE -> {
                 if (root == null || root.packageName?.toString() != packageName) return false
 
-                // Search can open a standalone viewer with no navigation tabs.
-                // One Back only, on a fresh confirmed player; never a Back loop.
-                if (attempt == 1 && ShortVideoDetector.isShortVideoScreen(packageName, root, null)) {
-                    return service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                }
-
+                // Prefer an actual visible safe tab whenever the player exposes one.
+                // A one-shot Back is only a last resort for a standalone viewer
+                // where no safe in-app navigation could be activated.
                 if (attempt % 2 == 0) {
                     if (clickFirstKnownId(root, instagramSearchIds)) return true
                     if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
@@ -97,6 +94,10 @@ object ShortVideoSafeNavigator {
                     if (clickFirstVisibleLabel(root, listOf("Home", "Главная"))) return true
                     if (clickFirstKnownId(root, instagramSearchIds)) return true
                     if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
+                }
+
+                if (attempt == 1 && ShortVideoDetector.isShortVideoScreen(packageName, root, null)) {
+                    return service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                 }
 
                 false
