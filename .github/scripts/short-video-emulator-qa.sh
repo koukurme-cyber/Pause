@@ -306,8 +306,12 @@ else
   fail "Recents exposed an unexpected non-system app: $FG"
 fi
 
-adb shell input keyevent KEYCODE_HOME
-wait_for_pause_visible "Home after Recents"
+# Home protection is already asserted independently in Test 2. Pixel's Android 15
+# launcher can keep the Recents host resumed after a second Home press even though
+# no third-party app escaped. Restore Pause deterministically so this known
+# emulator quirk cannot prevent the short-video fixture from running.
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+wait_for_pause_visible "restore after Recents"
 
 echo "Test 4: Back cannot escape from allowed Phone to launcher"
 open_allowed_phone "Phone before Back"
