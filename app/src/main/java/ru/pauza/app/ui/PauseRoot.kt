@@ -2009,8 +2009,6 @@ private fun ReviewScreen(
                         )
                     }
 
-                    Spacer(Modifier.height(6.dp))
-
                     Text(
                         "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
                         modifier = Modifier.fillMaxWidth(),
