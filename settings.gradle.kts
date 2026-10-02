@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Pauza"
 include(":app")
+include(":qa-shortvideo-fixture")

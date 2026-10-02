@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="clips_viewer_view_pager" type="id" />
+    <item name="feed_tab" type="id" />
+    <item name="reels_tab" type="id" />
+    <item name="state_label" type="id" />
+</resources>

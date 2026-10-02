@@ -5,6 +5,9 @@ PKG="ru.pauza.app"
 ACTIVITY="$PKG/.MainActivity"
 ACCESSIBILITY_COMPONENT="$PKG/$PKG.domain.PauseAccessibilityService"
 APK="app/build/outputs/apk/debug/app-debug.apk"
+FIXTURE_PKG="com.instagram.android"
+FIXTURE_ACTIVITY="$FIXTURE_PKG/.FixtureActivity"
+FIXTURE_APK="qa-shortvideo-fixture/build/outputs/apk/debug/qa-shortvideo-fixture-debug.apk"
 ARTIFACT_DIR="qa-artifacts"
 mkdir -p "$ARTIFACT_DIR"
 
@@ -121,8 +124,31 @@ open_allowed_phone() {
   sleep 0.35
 }
 
+fixture_log_count() {
+  local state="$1"
+  adb logcat -d -s ShortVideoFixture:I '*:S' 2>/dev/null |
+    grep -F -c "$state" || true
+}
+
+wait_for_fixture_state_count() {
+  local state="$1"
+  local wanted_count="$2"
+  local label="$3"
+  for _ in $(seq 1 40); do
+    local count
+    count="$(fixture_log_count "$state")"
+    if [ "$count" -ge "$wanted_count" ]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  fail "$label: fixture did not reach $state count=$wanted_count"
+}
+
 echo "Installing debug APK"
 adb install -r "$APK"
+echo "Installing Instagram accessibility fixture"
+adb install -r "$FIXTURE_APK"
 
 echo "Preparing QA environment"
 adb shell dumpsys deviceidle whitelist +"$PKG" || true
@@ -142,6 +168,7 @@ cat > /tmp/pause_store.xml <<EOF
 <map>
     <set name="selected_packages">
         <string>com.android.settings</string>
+        <string>com.instagram.android</string>
     </set>
     <long name="session_end_epoch_ms" value="$END_MS" />
     <boolean name="first_setup_completed" value="true" />
@@ -295,7 +322,35 @@ fi
 adb shell input keyevent KEYCODE_HOME
 wait_for_pause_visible "Home after Back"
 
-echo "Test 5: 30-cycle real Phone/Home stress"
+echo "Test 5: real Accessibility detection exits an Instagram-like Reels player"
+adb logcat -c
+adb shell am force-stop "$FIXTURE_PKG" || true
+adb shell am start -W -n "$FIXTURE_ACTIVITY" >/dev/null
+wait_for_fixture_state_count "STATE_REELS_PLAYER" 1 "direct Reels fixture launch"
+wait_for_fixture_state_count "STATE_SAFE_HOME" 1 "direct Reels redirect"
+FG="$(foreground_line)"
+echo "$FG" | tee "$ARTIFACT_DIR/test5-direct-reels.txt"
+if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
+  fail "Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
+fi
+snapshot "reels-direct-safe"
+
+# Let the short-video notice auto-dismiss, then enter Reels through a genuine
+# clickable navigation item. This exercises TYPE_VIEW_CLICKED early interception
+# as well as the full-screen player detector.
+sleep 2.5
+tap_ui_text "Reels"
+wait_for_fixture_state_count "STATE_REELS_PLAYER" 2 "Reels navigation click"
+wait_for_fixture_state_count "STATE_SAFE_HOME" 2 "Reels navigation redirect"
+sleep 0.8
+FG="$(foreground_line)"
+echo "$FG" | tee "$ARTIFACT_DIR/test5-click-reels.txt"
+if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
+  fail "clicked Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
+fi
+snapshot "reels-click-safe"
+
+echo "Test 6: 30-cycle real Phone/Home stress"
 for i in $(seq 1 30); do
   open_allowed_phone "stress Phone $i"
 
@@ -310,7 +365,7 @@ for i in $(seq 1 30); do
   echo "cycle $i ok" >> "$ARTIFACT_DIR/stress.txt"
 done
 
-echo "Test 6: repeated real Phone/Back transitions"
+echo "Test 7: repeated real Phone/Back transitions"
 for i in $(seq 1 15); do
   open_allowed_phone "Back cycle Phone $i"
 
@@ -329,7 +384,7 @@ for i in $(seq 1 15); do
   echo "back-cycle $i ok" >> "$ARTIFACT_DIR/back-stress.txt"
 done
 
-echo "Test 7: long-running stability inside allowed Phone"
+echo "Test 8: long-running stability inside allowed Phone"
 open_allowed_phone "Phone before soak"
 for i in $(seq 1 40); do
   sleep 0.5
