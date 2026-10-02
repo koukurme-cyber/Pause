@@ -1162,7 +1162,7 @@ private fun SavedSetsSettingsCard(
                     )
                     Spacer(Modifier.height(5.dp))
                     Text(
-                        "Сохраняют текущий выбор приложений. До ${PauseStore.MAX_SAVED_APP_SETS} наборов.",
+                        "Здесь можно создать свой набор разрешённых приложений для Паузы.",
                         color = PauseMuted,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
