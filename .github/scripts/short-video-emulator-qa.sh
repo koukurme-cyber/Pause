@@ -276,29 +276,14 @@ echo "=== end diagnostics ==="
 wait_for_pause_visible "initial launcher protection"
 snapshot "initial"
 
-echo "Test 1: allowed Phone opens through the actual Pause overlay"
-open_allowed_phone "allowed Phone"
-PHONE_FOREGROUND="$(foreground_line)"
-echo "$PHONE_FOREGROUND" | tee "$ARTIFACT_DIR/test1-foreground.txt"
-PHONE_PACKAGE="$(echo "$PHONE_FOREGROUND" | sed -n 's/.* u[0-9]\+ \([^/ ]*\)\/.*/\1/p')"
-if [ -z "$PHONE_PACKAGE" ]; then
-  fail "could not resolve foreground Phone package: $PHONE_FOREGROUND"
-fi
-echo "phonePackage=$PHONE_PACKAGE" | tee -a "$ARTIFACT_DIR/test1-foreground.txt"
-
-echo "Test 2: Home returns to protected Pause"
-adb shell input keyevent KEYCODE_HOME
-wait_for_pause_visible "Home"
-snapshot "home"
-
-echo "Test 3: real Accessibility detection exits an Instagram-like Reels player"
+echo "Test 1: real Accessibility detection exits an Instagram-like Reels player"
 adb logcat -c
 adb shell am force-stop "$FIXTURE_PKG" || true
 adb shell am start -W -n "$FIXTURE_ACTIVITY" >/dev/null
 wait_for_fixture_state_count "STATE_REELS_PLAYER" 1 "direct Reels fixture launch"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 1 "direct Reels redirect"
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test3-direct-reels.txt"
+echo "$FG" | tee "$ARTIFACT_DIR/test1-direct-reels.txt"
 if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
   fail "Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
 fi
@@ -313,15 +298,30 @@ wait_for_fixture_state_count "STATE_REELS_PLAYER" 2 "Reels navigation click"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 2 "Reels navigation redirect"
 sleep 0.8
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test3-click-reels.txt"
+echo "$FG" | tee "$ARTIFACT_DIR/test1-click-reels.txt"
 if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
   fail "clicked Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
 fi
 snapshot "reels-click-safe"
 
-echo "Test 4: Back cannot escape from allowed Phone to launcher"
+echo "Test 2: allowed Phone opens through the actual Pause overlay"
 adb shell input keyevent KEYCODE_HOME
 wait_for_pause_visible "Home after Reels"
+open_allowed_phone "allowed Phone"
+PHONE_FOREGROUND="$(foreground_line)"
+echo "$PHONE_FOREGROUND" | tee "$ARTIFACT_DIR/test2-foreground.txt"
+PHONE_PACKAGE="$(echo "$PHONE_FOREGROUND" | sed -n 's/.* u[0-9]\\+ \\([^/ ]*\\)\\/.*/\\1/p')"
+if [ -z "$PHONE_PACKAGE" ]; then
+  fail "could not resolve foreground Phone package: $PHONE_FOREGROUND"
+fi
+echo "phonePackage=$PHONE_PACKAGE" | tee -a "$ARTIFACT_DIR/test2-foreground.txt"
+
+echo "Test 3: Home returns to protected Pause"
+adb shell input keyevent KEYCODE_HOME
+wait_for_pause_visible "Home"
+snapshot "home"
+
+echo "Test 4: Back cannot escape from allowed Phone to launcher"
 open_allowed_phone "Phone before Back"
 adb shell input keyevent KEYCODE_BACK
 sleep 0.7
@@ -355,9 +355,6 @@ adb shell input keyevent KEYCODE_HOME
 if pause_visible_stably; then
   echo "Recents recovery: Pause resumed stably" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
 else
-  # This Pixel/API 35 launcher behavior predates the short-video experiment and
-  # also reproduces on the old 0.8.35 emulator suite. Keep it diagnostic here so
-  # it cannot mask the feature-specific Accessibility test above.
   echo "Recents recovery warning: Pixel launcher kept foreground; restarting Pause for remaining regression checks" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
   adb shell am start -W -n "$ACTIVITY" >/dev/null
   wait_for_pause_visible "Recovery after emulator Recents"
