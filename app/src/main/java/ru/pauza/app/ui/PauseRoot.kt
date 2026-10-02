@@ -197,6 +197,7 @@ fun PauseRoot(
     var activeSavedSetName by remember { mutableStateOf(store.activeSavedSetName) }
     var duration by remember { mutableStateOf(PauseDuration()) }
     var testModeEnabled by remember { mutableStateOf(store.testModeEnabled) }
+    var blockShortVideos by remember { mutableStateOf(store.blockShortVideos) }
     var startVibrationEnabled by remember { mutableStateOf(store.startVibrationEnabled) }
     var suppressNotificationsEnabled by remember { mutableStateOf(store.suppressNotificationsEnabled) }
 
@@ -369,6 +370,11 @@ fun PauseRoot(
             onTestModeChanged = { enabled ->
                 testModeEnabled = enabled
                 store.testModeEnabled = enabled
+            },
+            blockShortVideos = blockShortVideos,
+            onBlockShortVideosChanged = { enabled ->
+                blockShortVideos = enabled
+                store.blockShortVideos = enabled
             },
             startVibrationEnabled = startVibrationEnabled,
             onStartVibrationChanged = { enabled ->
@@ -1648,6 +1654,8 @@ private fun SettingsScreen(
     onDeleteSet: (Int) -> Unit,
     testModeEnabled: Boolean,
     onTestModeChanged: (Boolean) -> Unit,
+    blockShortVideos: Boolean,
+    onBlockShortVideosChanged: (Boolean) -> Unit,
     startVibrationEnabled: Boolean,
     onStartVibrationChanged: (Boolean) -> Unit,
     suppressNotificationsEnabled: Boolean,
@@ -1876,6 +1884,50 @@ private fun SettingsScreen(
                             Text("Разрешить доступ")
                         }
                     }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Блокировать короткие видео",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Эксперимент. Во время Паузы пытается закрывать YouTube Shorts, Instagram Reels и короткие видео RUTUBE, если само приложение оставлено доступным.",
+                            color = PauseMuted,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Switch(
+                        checked = blockShortVideos,
+                        onCheckedChange = onBlockShortVideosChanged,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = Color(0xFF36B34A),
+                            checkedBorderColor = Color(0xFF36B34A),
+                            uncheckedThumbColor = PauseMuted,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                            uncheckedBorderColor = Color(0xFFCBD0C8),
+                        )
+                    )
                 }
             }
 
