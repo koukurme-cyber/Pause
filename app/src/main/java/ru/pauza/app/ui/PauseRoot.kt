@@ -1999,25 +1999,26 @@ private fun ReviewScreen(
                             )
                         }
                         Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "После запуска изменить время и список приложений нельзя.",
-                                color = Color(0xFF8E2B22),
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
-                                modifier = Modifier.fillMaxWidth(),
-                                color = PauseMuted,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                textAlign = TextAlign.Start
-                            )
-                        }
+                        Text(
+                            "После запуска изменить время и список приложений нельзя.",
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFF8E2B22),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp
+                        )
                     }
+
+                    Spacer(Modifier.height(6.dp))
+
+                    Text(
+                        "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = PauseMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = TextAlign.Start
+                    )
                 }
             }
 
