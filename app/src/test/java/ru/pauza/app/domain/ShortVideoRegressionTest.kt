@@ -113,12 +113,11 @@ class ShortVideoRegressionTest {
         assertTrue(ShortVideoDetector.isShortVideoScreen(instagram, node(children = listOf(player())), null))
     }
 
-    @Test fun standaloneSearchViewerGetsOnlyOneBack() {
+    @Test fun standaloneInstagramViewerNeverUsesGlobalBack() {
         val root = node(children = listOf(player()))
         for (attempt in 0..4) ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, root, attempt)
-        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, node(children = listOf(safeTab())), 1)
-        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        verify(service, never()).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     }
 
     @Test fun visibleSafeTabWinsBeforeStandaloneBackFallback() {
@@ -157,7 +156,7 @@ class ShortVideoRegressionTest {
         assertEquals(true, field("shortVideoNavigating"))
         assertEquals(0L, field("lastShortNoticeShownAt"))
         assertEquals(4, field("shortVideoRetryAttempts"))
-        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        verify(service, never()).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     }
 
     @Test fun missingRootBreaksConfirmationAndNoticeAppearsOnceAfterExit() {

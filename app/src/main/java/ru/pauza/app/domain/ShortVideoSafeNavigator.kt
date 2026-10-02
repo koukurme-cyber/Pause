@@ -96,10 +96,9 @@ object ShortVideoSafeNavigator {
                     if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
                 }
 
-                if (attempt == 1 && ShortVideoDetector.isShortVideoScreen(packageName, root, null)) {
-                    return service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                }
-
+                // Do not use GLOBAL_ACTION_BACK for Instagram. A delayed retry can
+                // race with a successful in-app Home/Search click and throw the user
+                // to the launcher after the Reels player has already been closed.
                 false
             }
 
