@@ -40,13 +40,23 @@ fail() {
 
 wait_for_pause_visible() {
   local label="$1"
-  for _ in $(seq 1 12); do
+  local stable_samples=0
+
+  # Recents/Home transitions on the Android 15 Pixel image can briefly report
+  # Pause as top-resumed before Launcher finishes its animation and steals focus
+  # again. Do not accept a one-sample transient as successful protection.
+  for _ in $(seq 1 28); do
     if pause_visible; then
-      return 0
+      stable_samples=$((stable_samples + 1))
+      if [ "$stable_samples" -ge 4 ]; then
+        return 0
+      fi
+    else
+      stable_samples=0
     fi
     sleep 0.25
   done
-  fail "$label: Pause overlay did not appear"
+  fail "$label: Pause did not remain foreground stably"
 }
 
 wait_for_pause_hidden() {
