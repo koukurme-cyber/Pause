@@ -145,7 +145,23 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        val resolvedForegroundPackage = resolveForegroundPackage(event) ?: return
+        val shortNavigationPackage = shortVideoBlockedPackage
+        val foregroundPackage =
+            if (
+                shortVideoNavigating &&
+                shortNavigationPackage != null &&
+                resolvedForegroundPackage != shortNavigationPackage &&
+                resolveApplicationRoot(shortNavigationPackage) != null
+            ) {
+                Log.d(
+                    "PauseShortVideo",
+                    "Keep short-video navigation in $shortNavigationPackage while foreground reports $resolvedForegroundPackage"
+                )
+                shortNavigationPackage
+            } else {
+                resolvedForegroundPackage
+            }
 
         if (shortNoticePackage != null && foregroundPackage != shortNoticePackage) {
             hideShortNotice()
@@ -324,6 +340,10 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
+        Log.d(
+            "PauseShortVideo",
+            "General blocker for $foregroundPackage; shortNavigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
+        )
         showOverlay(end)
         returnToPause()
     }
@@ -343,6 +363,10 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoExitCandidateAt = 0L
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
+        Log.d(
+            "PauseShortVideo",
+            "Begin redirect package=$foregroundPackage detectedPlayer=$detectedPlayer"
+        )
 
         navigateShortVideoEscape(
             foregroundPackage = foregroundPackage,
