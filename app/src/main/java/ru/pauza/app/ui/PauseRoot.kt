@@ -81,6 +81,7 @@ import ru.pauza.app.domain.AccessibilityPauseBlocker
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.domain.NotificationSilencer
+import ru.pauza.app.domain.ShortVideoDiagnostics
 import ru.pauza.app.domain.UsageAccessMonitor
 import ru.pauza.app.model.InstalledApp
 import ru.pauza.app.ui.theme.PauseGreen
@@ -1664,8 +1665,10 @@ private fun SettingsScreen(
     onOpenNotificationPolicyAccess: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
     var editingSetIndex by remember { mutableStateOf<Int?>(null) }
     var creatingSet by remember { mutableStateOf(false) }
+    var shortVideoDiagnosticsStatus by remember { mutableStateOf<String?>(null) }
 
     if (creatingSet || editingSetIndex != null) {
         val editingSet = editingSetIndex?.let(savedSets::getOrNull)
@@ -1897,37 +1900,81 @@ private fun SettingsScreen(
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, Color(0xFFDCE3D9))
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Блокировать короткие видео",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            "Эксперимент. Во время Паузы пытается закрывать YouTube Shorts, Instagram Reels и короткие видео RUTUBE, если само приложение оставлено доступным.",
-                            color = PauseMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Блокировать короткие видео",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                "Эксперимент. Во время Паузы пытается закрывать YouTube Shorts, Instagram Reels и короткие видео RUTUBE, если само приложение оставлено доступным.",
+                                color = PauseMuted,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Switch(
+                            checked = blockShortVideos,
+                            onCheckedChange = onBlockShortVideosChanged,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                checkedTrackColor = Color(0xFF36B34A),
+                                checkedBorderColor = Color(0xFF36B34A),
+                                uncheckedThumbColor = PauseMuted,
+                                uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                                uncheckedBorderColor = Color(0xFFCBD0C8),
+                            )
                         )
                     }
-                    Spacer(Modifier.width(14.dp))
-                    Switch(
-                        checked = blockShortVideos,
-                        onCheckedChange = onBlockShortVideosChanged,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                            checkedTrackColor = Color(0xFF36B34A),
-                            checkedBorderColor = Color(0xFF36B34A),
-                            uncheckedThumbColor = PauseMuted,
-                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
-                            uncheckedBorderColor = Color(0xFFCBD0C8),
-                        )
-                    )
+
+                    if (blockShortVideos) {
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0xFFE3E7E0))
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    shortVideoDiagnosticsStatus =
+                                        ShortVideoDiagnostics.exportToDownloads(context)
+                                            ?.let { "Лог сохранён: $it" }
+                                            ?: "Не удалось сохранить лог"
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("Сохранить лог")
+                            }
+                            TextButton(
+                                onClick = {
+                                    ShortVideoDiagnostics.clear(context)
+                                    shortVideoDiagnosticsStatus = "Лог очищен"
+                                }
+                            ) {
+                                Text("Очистить")
+                            }
+                        }
+
+                        shortVideoDiagnosticsStatus?.let { status ->
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                status,
+                                color = PauseMuted,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
                 }
             }
 
