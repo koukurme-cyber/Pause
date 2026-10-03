@@ -62,6 +62,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastShortNoticeShownAt = 0L
     private var lastDiagnosticsForeground: String? = null
     private var shortNoticeOverlay: View? = null
+    private var shortNoticeWindowManager: WindowManager? = null
     private var shortNoticePackage: String? = null
     private var shortNoticeArmed = true
     private var shortSafeSince = 0L
@@ -609,8 +610,10 @@ class PauseAccessibilityService : AccessibilityService() {
             title = "PauzaShortVideoNotice"
         }
 
+        val noticeWindowManager = getSystemService(WindowManager::class.java)
         runCatching {
-            getSystemService(WindowManager::class.java).addView(container, params)
+            noticeWindowManager.addView(container, params)
+            shortNoticeWindowManager = noticeWindowManager
             shortNoticeOverlay = container
             shortNoticePackage = ownerPackage
             shortNoticeArmed = false
@@ -788,13 +791,20 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun hideShortNotice() {
-        shortNoticePackage = null
-
         val current = shortNoticeOverlay ?: return
+        val manager = shortNoticeWindowManager ?: getSystemService(WindowManager::class.java)
         runCatching {
-            getSystemService(WindowManager::class.java).removeView(current)
+            // Detach synchronously, using the exact manager that added this view.
+            // Keep the reference if removal fails so no orphan/duplicate is created.
+            manager.removeViewImmediate(current)
+        }.onSuccess {
+            shortNoticeOverlay = null
+            shortNoticeWindowManager = null
+            shortNoticePackage = null
+            ShortVideoDiagnostics.log(this, "PauseShortVideo", "notice removed")
+        }.onFailure { error ->
+            ShortVideoDiagnostics.log(this, "PauseShortVideo", "notice removal failed: ${error.javaClass.simpleName}: ${error.message}")
         }
-        shortNoticeOverlay = null
     }
 
     override fun onInterrupt() = Unit
