@@ -607,7 +607,7 @@ class PauseAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
-            title = "PauzaShortVideoNotice"
+            setTitle("PauzaShortVideoNotice")
         }
 
         val noticeWindowManager = getSystemService(WindowManager::class.java)
