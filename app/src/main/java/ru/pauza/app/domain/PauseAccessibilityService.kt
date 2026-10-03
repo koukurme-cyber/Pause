@@ -585,27 +585,28 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val container = FrameLayout(this).apply {
             setPadding(dp(18), 0, dp(18), 0)
+            setBackgroundColor(Color.argb(90, 0, 0, 0))
+            isClickable = true
             addView(
                 card,
                 FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
                 )
             )
         }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.BOTTOM
-            x = 0
-            y = dp(24)
+            gravity = Gravity.CENTER
+            title = "PauzaShortVideoNotice"
         }
 
         runCatching {
