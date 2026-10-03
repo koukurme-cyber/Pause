@@ -120,11 +120,21 @@ class ShortVideoRegressionTest {
         assertTrue(ShortVideoDetector.isShortVideoScreen(instagram, node(children = listOf(player())), null))
     }
 
-    @Test fun standaloneInstagramViewerNeverUsesGlobalBack() {
+    @Test fun standaloneViewerUsesBackOnlyWhenAllowedAndPlayerIsConfirmed() {
         val root = node(children = listOf(player()))
-        for (attempt in 0..4) ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, root, attempt)
-        ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, node(children = listOf(safeTab())), 1)
-        verify(service, never()).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        assertTrue(ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, root))
+        for (attempt in 1..4) {
+            assertFalse(ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, root, attempt, false))
+        }
+        assertFalse(ShortVideoSafeNavigator.escapeDetectedPlayer(service, instagram, node(children = listOf(safeTab())), 1))
+        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+    }
+
+    @Test fun serviceNeverRepeatsBackWhileStandaloneViewerRemainsVisible() {
+        currentRoot = node(children = listOf(player()))
+        enforce()
+        repeat(100) { advance(50); enforce() }
+        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     }
 
     @Test fun visibleSafeTabWinsBeforeStandaloneBackFallback() {
@@ -161,14 +171,15 @@ class ShortVideoRegressionTest {
         enforce()
         repeat(100) { advance(50); enforce() }
         assertEquals(true, field("shortVideoNavigating"))
-        assertEquals(0L, field("lastShortNoticeShownAt"))
+        assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
         assertEquals(4, field("shortVideoRetryAttempts"))
-        verify(service, never()).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        verify(service, times(1)).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     }
 
     @Test fun missingRootBreaksConfirmationAndNoticeAppearsOnceAfterExit() {
         currentRoot = playerWithWorkingExit()
         enforce()
+        assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce()
         currentRoot = null
@@ -190,6 +201,7 @@ class ShortVideoRegressionTest {
     @Test fun immediateReentryIsBlockedWithoutRepeatingNotice() {
         currentRoot = playerWithWorkingExit()
         enforce()
+        assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce()
         advance(500); enforce()
@@ -203,27 +215,29 @@ class ShortVideoRegressionTest {
     @Test fun noticeKeepsSameViewAndDeadlineDuringDetectionBounce() {
         currentRoot = playerWithWorkingExit()
         enforce()
+        assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
         currentRoot = node(children = listOf(safeTab()))
-        advance(300); enforce()
+        advance(100); enforce()
         advance(500); enforce()
         val overlay = field("shortNoticeOverlay")
         val deadline = field("shortNoticeHideAt")
         assertNotNull(overlay)
         currentRoot = node(children = listOf(player()))
-        advance(300); enforce()
+        advance(100); enforce()
         assertSame(overlay, field("shortNoticeOverlay"))
         assertEquals(deadline, field("shortNoticeHideAt"))
         currentRoot = node(children = listOf(safeTab()))
-        advance(300); enforce()
+        advance(100); enforce()
         advance(500); enforce()
         assertSame(overlay, field("shortNoticeOverlay"))
-        advance(600); enforce()
+        advance(1600); enforce()
         assertNull(field("shortNoticeOverlay"))
     }
 
     @Test fun unstableScreenCannotRearmNoticeAfterCooldown() {
         currentRoot = playerWithWorkingExit()
         enforce()
+        assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce(); advance(500); enforce()
         val shown = field("lastShortNoticeShownAt")

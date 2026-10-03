@@ -76,6 +76,7 @@ object ShortVideoSafeNavigator {
         packageName: String,
         root: AccessibilityNodeInfo?,
         attempt: Int = 0,
+        allowBackFallback: Boolean = true,
     ): Boolean {
         return when {
             packageName == INSTAGRAM_PACKAGE -> {
@@ -96,10 +97,12 @@ object ShortVideoSafeNavigator {
                     if (clickFirstVisibleLabel(root, listOf("Search", "Поиск"))) return true
                 }
 
-                // Do not use GLOBAL_ACTION_BACK for Instagram. A delayed retry can
-                // race with a successful in-app Home/Search click and throw the user
-                // to the launcher after the Reels player has already been closed.
-                false
+                // A standalone viewer opened from Explore may expose no safe tabs.
+                // The service allows only one Back per redirect and only while
+                // the current root still proves that a full-screen player is open.
+                allowBackFallback &&
+                    ShortVideoDetector.isShortVideoScreen(packageName, root, null) &&
+                    service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             }
 
             else ->

@@ -52,6 +52,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoRetryAt = 0L
     private var shortVideoRetryAttempts = 0
     private var pendingShortVideoNotice = false
+    private var shortVideoBackFallbackUsed = false
     private var shortVideoCooldownUntil = 0L
     private var shortVideoUsesDetectedPlayerEscape = false
     private var shortVideoNavigationSucceeded = false
@@ -226,7 +227,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     event = event,
                 )
 
-                if (earlyEntryAction) {
+                if (earlyEntryAction && nowElapsed >= shortVideoCooldownUntil) {
                     ShortVideoDiagnostics.log(
                         this,
                         "PauseShortVideo",
@@ -269,7 +270,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortSafeSince = 0L
                     shortVideoUsesDetectedPlayerEscape = true
 
-                    if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
+                    if (!shortVideoNavigating) {
                         ShortVideoDiagnostics.log(
                             this,
                             "PauseShortVideo",
@@ -363,7 +364,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoBlockedPackage = null
                     shortVideoUsesDetectedPlayerEscape = false
                     shortVideoExitCandidateAt = 0L
-                    shortVideoCooldownUntil = 0L
+                    shortVideoCooldownUntil = nowElapsed + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
                     ShortVideoDiagnostics.log(
                         this,
                         "PauseShortVideo",
@@ -414,6 +415,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
         shortVideoUsesDetectedPlayerEscape = detectedPlayer
         shortVideoNavigationSucceeded = false
+        shortVideoBackFallbackUsed = false
         shortVideoNavigating = true
         shortVideoBlockedPackage = foregroundPackage
         shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
@@ -444,6 +446,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     packageName = foregroundPackage,
                     root = appRoot,
                     attempt = shortVideoRetryAttempts,
+                    allowBackFallback = !shortVideoNavigationSucceeded && !shortVideoBackFallbackUsed,
                 )
             } else {
                 ShortVideoSafeNavigator.navigateToSafeSurface(
@@ -453,8 +456,20 @@ class PauseAccessibilityService : AccessibilityService() {
                 )
             }
 
+        if (shortVideoUsesDetectedPlayerEscape && foregroundPackage == "com.instagram.android") {
+            // Conservatively consume the fallback allowance after the first attempt,
+            // even if Android rejects Back. Never repeatedly back out of Instagram.
+            shortVideoBackFallbackUsed = true
+        }
         if (result) {
             shortVideoNavigationSucceeded = true
+            if (pendingShortVideoNotice && shortNoticeArmed &&
+                SystemClock.elapsedRealtime() - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS) {
+                pendingShortVideoNotice = false
+                showShortVideoOverlay(foregroundPackage)
+            }
+            // Give the accepted navigation time to settle before another action.
+            shortVideoRetryAt = SystemClock.elapsedRealtime() + 900L
         }
         ShortVideoDiagnostics.log(
             this,
