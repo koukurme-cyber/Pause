@@ -313,8 +313,10 @@ if ! fixture_focused_stably; then
   fail "Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-direct-safe"
+tap_ui_text "ОК"
+sleep 0.3
 
-# Let the short-video notice auto-dismiss, then enter Reels through a genuine
+# Acknowledge the notice, then enter Reels through a genuine
 # clickable navigation item. This exercises TYPE_VIEW_CLICKED early interception
 # as well as the full-screen player detector.
 sleep 2.5
@@ -332,6 +334,8 @@ if ! fixture_focused_stably; then
   fail "clicked Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-click-safe"
+tap_ui_text "ОК"
+sleep 0.3
 
 echo "Test 2: allowed Phone opens through the actual Pause overlay"
 adb shell input keyevent KEYCODE_HOME
