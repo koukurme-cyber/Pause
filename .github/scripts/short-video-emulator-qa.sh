@@ -176,7 +176,12 @@ NOTICEPY
   for _ in $(seq 1 20); do
     local after
     after="$(adb logcat -d -s PauseShortVideo:D '*:S' | grep -c 'notice acknowledged' || true)"
-    if [ "$after" -gt "$before" ]; then return 0; fi
+    if [ "$after" -gt "$before" ]; then
+      # A callback alone is not proof of dismissal: the actual overlay must go.
+      if ! adb shell dumpsys window windows | grep -E 'Window #[0-9]+.*PauzaShortVideoNotice' >/dev/null; then
+        return 0
+      fi
+    fi
     sleep 0.2
   done
   fail "OK button did not acknowledge the short-video notice"
