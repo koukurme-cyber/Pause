@@ -54,6 +54,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var pendingShortVideoNotice = false
     private var shortVideoCooldownUntil = 0L
     private var shortVideoUsesDetectedPlayerEscape = false
+    private var shortVideoNavigationSucceeded = false
     private var shortVideoExitCandidateAt = 0L
     private var lastShortContentScanAt = 0L
     private var lastShortNoticeShownAt = 0L
@@ -372,10 +373,17 @@ class PauseAccessibilityService : AccessibilityService() {
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
                         if (
+                            shortVideoNavigationSucceeded &&
                             shortNoticeArmed &&
                             nowElapsed - lastShortNoticeShownAt >= SHORT_VIDEO_NOTICE_MIN_GAP_MS
                         ) {
                             showShortVideoOverlay(foregroundPackage)
+                        } else if (!shortVideoNavigationSucceeded) {
+                            ShortVideoDiagnostics.log(
+                                this,
+                                "PauseShortVideo",
+                                "notice suppressed: exit was not caused by successful navigation"
+                            )
                         }
                     }
                 }
@@ -405,6 +413,7 @@ class PauseAccessibilityService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
 
         shortVideoUsesDetectedPlayerEscape = detectedPlayer
+        shortVideoNavigationSucceeded = false
         shortVideoNavigating = true
         shortVideoBlockedPackage = foregroundPackage
         shortVideoRetryAt = now + SHORT_VIDEO_RETRY_DELAY_MS
@@ -444,6 +453,9 @@ class PauseAccessibilityService : AccessibilityService() {
                 )
             }
 
+        if (result) {
+            shortVideoNavigationSucceeded = true
+        }
         ShortVideoDiagnostics.log(
             this,
             "PauseShortVideo",
@@ -467,6 +479,7 @@ class PauseAccessibilityService : AccessibilityService() {
         pendingShortVideoNotice = false
         shortVideoCooldownUntil = 0L
         shortVideoUsesDetectedPlayerEscape = false
+        shortVideoNavigationSucceeded = false
         shortVideoExitCandidateAt = 0L
         lastShortContentScanAt = 0L
         shortSafeSince = 0L
