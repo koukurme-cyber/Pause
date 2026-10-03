@@ -144,6 +144,44 @@ PY
   adb shell input tap ${coords}
 }
 
+acknowledge_short_notice() {
+  # uiautomator dump suppresses accessibility services and their overlays.
+  # Use the measured overlay window frame, then validate the real callback.
+  local before density frame coords
+  before="$(adb logcat -d -s PauseShortVideo:D '*:S' | grep -c 'notice acknowledged' || true)"
+  density="$(adb shell wm density | tr -d '\r' | awk -F': ' '/Physical density/ {print $2}')"
+  for _ in $(seq 1 30); do
+    adb shell dumpsys window windows > /tmp/notice-windows.txt
+    coords="$(python3 - "$density" <<'NOTICEPY'
+import re,sys
+text=open('/tmp/notice-windows.txt').read()
+for block in re.split(r'Window #\d+',text):
+    if 'package=ru.pauza.app' not in block or 'ty=ACCESSIBILITY_OVERLAY' not in block:
+        continue
+    m=re.search(r'Frames:.*? frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]',block)
+    if m:
+        x1,y1,x2,y2=map(int,m.groups())
+        if x2>x1 and y2>y1:
+            # Right padding 18dp + card padding 12dp + half the 64dp button.
+            print(round(x2-62*int(sys.argv[1])/160), (y1+y2)//2)
+            break
+NOTICEPY
+)"
+    if [ -n "$coords" ]; then break; fi
+    sleep 0.2
+  done
+  [ -n "$coords" ] || fail "short-video notice did not obtain a visible window frame"
+  snapshot "notice-before-ok-$before"
+  adb shell input tap $coords
+  for _ in $(seq 1 20); do
+    local after
+    after="$(adb logcat -d -s PauseShortVideo:D '*:S' | grep -c 'notice acknowledged' || true)"
+    if [ "$after" -gt "$before" ]; then return 0; fi
+    sleep 0.2
+  done
+  fail "OK button did not acknowledge the short-video notice"
+}
+
 open_allowed_phone() {
   local label="$1"
   wait_for_pause_visible "$label precondition"
@@ -313,7 +351,7 @@ if ! fixture_focused_stably; then
   fail "Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-direct-safe"
-tap_ui_text "ОК"
+acknowledge_short_notice
 sleep 0.3
 
 # Acknowledge the notice, then enter Reels through a genuine
@@ -334,7 +372,7 @@ if ! fixture_focused_stably; then
   fail "clicked Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-click-safe"
-tap_ui_text "ОК"
+acknowledge_short_notice
 sleep 0.3
 
 echo "Test 2: allowed Phone opens through the actual Pause overlay"
