@@ -14,6 +14,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -574,6 +575,22 @@ class PauseAccessibilityService : AccessibilityService() {
         val dismiss = Button(ContextThemeWrapper(this, android.R.style.Theme_Material_Light)).apply {
             text = "ОК"
             contentDescription = "Закрыть уведомление"
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        view.scaleX = 0.92f
+                        view.scaleY = 0.92f
+                        view.alpha = 0.62f
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL -> {
+                        view.scaleX = 1f
+                        view.scaleY = 1f
+                        view.alpha = 1f
+                    }
+                }
+                false
+            }
             setOnClickListener {
                 pendingShortVideoNotice = false
                 shortNoticeArmed = false
