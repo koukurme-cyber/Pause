@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -570,10 +571,9 @@ class PauseAccessibilityService : AccessibilityService() {
             )
         )
 
-        val dismiss = Button(this).apply {
+        val dismiss = Button(ContextThemeWrapper(this, android.R.style.Theme_Material_Light)).apply {
             text = "ОК"
             contentDescription = "Закрыть уведомление"
-            setTextColor(Color.rgb(57, 103, 70))
             setOnClickListener {
                 pendingShortVideoNotice = false
                 shortNoticeArmed = false
@@ -582,7 +582,7 @@ class PauseAccessibilityService : AccessibilityService() {
                 hideShortNotice()
             }
         }
-        card.addView(dismiss, LinearLayout.LayoutParams(dp(64), dp(48)))
+        card.addView(dismiss, LinearLayout.LayoutParams(dp(88), dp(48)))
 
         val container = FrameLayout(this).apply {
             setPadding(dp(18), 0, dp(18), 0)

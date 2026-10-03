@@ -162,8 +162,8 @@ for block in re.split(r'Window #\d+',text):
     if m:
         x1,y1,x2,y2=map(int,m.groups())
         if x2>x1 and y2>y1:
-            # Right padding 18dp + card padding 12dp + half the 64dp button.
-            print(round(x2-62*int(sys.argv[1])/160), (y1+y2)//2)
+            # Right padding 18dp + card padding 12dp + half the 88dp button.
+            print(round(x2-74*int(sys.argv[1])/160), (y1+y2)//2)
             break
 NOTICEPY
 )"
