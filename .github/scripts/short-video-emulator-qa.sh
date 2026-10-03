@@ -339,7 +339,7 @@ wait_for_pause_visible "Home after Reels"
 open_allowed_phone "allowed Phone"
 PHONE_FOREGROUND="$(foreground_line)"
 echo "$PHONE_FOREGROUND" | tee "$ARTIFACT_DIR/test2-foreground.txt"
-PHONE_PACKAGE="$(echo "$PHONE_FOREGROUND" | sed -n 's/.* u[0-9]\\+ \\([^/ ]*\\)\\/.*/\\1/p')"
+PHONE_PACKAGE="$(echo "$PHONE_FOREGROUND" | sed -n 's#.* u[0-9]\\+ \\([^/ ]*\\)/.*#\\1#p')"
 if [ -z "$PHONE_PACKAGE" ]; then
   fail "could not resolve foreground Phone package: $PHONE_FOREGROUND"
 fi
