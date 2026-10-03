@@ -57,6 +57,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var shortVideoExitCandidateAt = 0L
     private var lastShortContentScanAt = 0L
     private var lastShortNoticeShownAt = 0L
+    private var lastDiagnosticsForeground: String? = null
     private var shortNoticeOverlay: View? = null
     private var shortNoticeDismissRunnable: Runnable? = null
     private var shortNoticeHideAt = 0L
@@ -81,6 +82,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        ShortVideoDiagnostics.log(this, "PauseShortVideo", "Accessibility service connected")
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -94,6 +96,11 @@ class PauseAccessibilityService : AccessibilityService() {
             enforceCurrentWindow(event)
         } catch (error: RuntimeException) {
             Log.w("PauseProtection", "Foreground enforcement failed; will retry", error)
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseProtection",
+                "enforce failed: ${error::class.java.simpleName}: ${error.message.orEmpty()}"
+            )
         }
     }
 
@@ -147,12 +154,30 @@ class PauseAccessibilityService : AccessibilityService() {
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
+        if (
+            store.blockShortVideos &&
+            foregroundPackage != lastDiagnosticsForeground &&
+            (ShortVideoDetector.isSupportedPackage(foregroundPackage) || shortVideoNavigating)
+        ) {
+            lastDiagnosticsForeground = foregroundPackage
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseForeground",
+                "foreground=$foregroundPackage eventType=${event?.eventType} eventPackage=${event?.packageName} navigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
+            )
+        }
+
         if (shortNoticePackage != null && foregroundPackage != shortNoticePackage) {
             hideShortNotice()
             shortNoticeArmed = true
             shortSafeSince = 0L
         }
         if (shortVideoBlockedPackage != null && foregroundPackage != shortVideoBlockedPackage) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "navigation package changed: blocked=$shortVideoBlockedPackage foreground=$foregroundPackage"
+            )
             resetShortVideoNavigation()
             hideShortNotice()
         }
@@ -183,6 +208,13 @@ class PauseAccessibilityService : AccessibilityService() {
                 // successfully left a short-video player.
                 val appRoot = resolveApplicationRoot(foregroundPackage)
                 if (appRoot == null) {
+                    if (shortVideoNavigating) {
+                        ShortVideoDiagnostics.log(
+                            this,
+                            "PauseShortVideo",
+                            "application root missing during navigation package=$foregroundPackage"
+                        )
+                    }
                     shortSafeSince = 0L
                     shortVideoExitCandidateAt = 0L
                     return
@@ -194,6 +226,11 @@ class PauseAccessibilityService : AccessibilityService() {
                 )
 
                 if (earlyEntryAction) {
+                    ShortVideoDiagnostics.log(
+                        this,
+                        "PauseShortVideo",
+                        "entry action detected package=$foregroundPackage eventType=${event?.eventType}"
+                    )
                     shortNoticeArmed = true
                     shortSafeSince = 0L
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
@@ -232,6 +269,11 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoUsesDetectedPlayerEscape = true
 
                     if (!shortVideoNavigating && nowElapsed >= shortVideoCooldownUntil) {
+                        ShortVideoDiagnostics.log(
+                            this,
+                            "PauseShortVideo",
+                            "short-video screen detected package=$foregroundPackage"
+                        )
                         beginShortVideoRedirect(
                             foregroundPackage = foregroundPackage,
                             appRoot = appRoot,
@@ -245,6 +287,11 @@ class PauseAccessibilityService : AccessibilityService() {
                     ) {
                         shortVideoRetryAttempts += 1
                         shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
+                        ShortVideoDiagnostics.log(
+                            this,
+                            "PauseShortVideo",
+                            "retry detected-player escape package=$foregroundPackage attempt=$shortVideoRetryAttempts"
+                        )
                         navigateShortVideoEscape(
                             foregroundPackage = foregroundPackage,
                             appRoot = appRoot,
@@ -283,6 +330,11 @@ class PauseAccessibilityService : AccessibilityService() {
                         ) {
                             shortVideoRetryAttempts += 1
                             shortVideoRetryAt = nowElapsed + SHORT_VIDEO_RETRY_DELAY_MS
+                            ShortVideoDiagnostics.log(
+                                this,
+                                "PauseShortVideo",
+                                "retry safe-surface escape package=$foregroundPackage attempt=$shortVideoRetryAttempts"
+                            )
                             navigateShortVideoEscape(
                                 foregroundPackage = foregroundPackage,
                                 appRoot = appRoot,
@@ -293,6 +345,11 @@ class PauseAccessibilityService : AccessibilityService() {
 
                     if (shortVideoExitCandidateAt == 0L) {
                         shortVideoExitCandidateAt = nowElapsed
+                        ShortVideoDiagnostics.log(
+                            this,
+                            "PauseShortVideo",
+                            "safe surface candidate package=$foregroundPackage"
+                        )
                         return
                     }
 
@@ -306,6 +363,11 @@ class PauseAccessibilityService : AccessibilityService() {
                     shortVideoUsesDetectedPlayerEscape = false
                     shortVideoExitCandidateAt = 0L
                     shortVideoCooldownUntil = 0L
+                    ShortVideoDiagnostics.log(
+                        this,
+                        "PauseShortVideo",
+                        "exit confirmed package=$foregroundPackage pendingNotice=$pendingShortVideoNotice"
+                    )
 
                     if (pendingShortVideoNotice) {
                         pendingShortVideoNotice = false
@@ -324,10 +386,13 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        Log.d(
-            "PauseShortVideo",
-            "General blocker for $foregroundPackage; shortNavigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
-        )
+        if (store.blockShortVideos) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "general blocker package=$foregroundPackage navigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
+            )
+        }
         showOverlay(end)
         returnToPause()
     }
@@ -347,9 +412,10 @@ class PauseAccessibilityService : AccessibilityService() {
         shortVideoExitCandidateAt = 0L
         shortVideoCooldownUntil = now + SHORT_VIDEO_NAVIGATION_COOLDOWN_MS
         pendingShortVideoNotice = true
-        Log.d(
+        ShortVideoDiagnostics.log(
+            this,
             "PauseShortVideo",
-            "Begin redirect package=$foregroundPackage detectedPlayer=$detectedPlayer"
+            "begin redirect package=$foregroundPackage detectedPlayer=$detectedPlayer"
         )
 
         navigateShortVideoEscape(
@@ -361,23 +427,39 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun navigateShortVideoEscape(
         foregroundPackage: String,
         appRoot: android.view.accessibility.AccessibilityNodeInfo?,
-    ): Boolean =
-        if (shortVideoUsesDetectedPlayerEscape) {
-            ShortVideoSafeNavigator.escapeDetectedPlayer(
-                service = this,
-                packageName = foregroundPackage,
-                root = appRoot,
-                attempt = shortVideoRetryAttempts,
-            )
-        } else {
-            ShortVideoSafeNavigator.navigateToSafeSurface(
-                service = this,
-                packageName = foregroundPackage,
-                root = appRoot,
-            )
-        }
+    ): Boolean {
+        val result =
+            if (shortVideoUsesDetectedPlayerEscape) {
+                ShortVideoSafeNavigator.escapeDetectedPlayer(
+                    service = this,
+                    packageName = foregroundPackage,
+                    root = appRoot,
+                    attempt = shortVideoRetryAttempts,
+                )
+            } else {
+                ShortVideoSafeNavigator.navigateToSafeSurface(
+                    service = this,
+                    packageName = foregroundPackage,
+                    root = appRoot,
+                )
+            }
+
+        ShortVideoDiagnostics.log(
+            this,
+            "PauseShortVideo",
+            "navigate package=$foregroundPackage detectedPlayer=$shortVideoUsesDetectedPlayerEscape attempt=$shortVideoRetryAttempts result=$result"
+        )
+        return result
+    }
 
     private fun resetShortVideoNavigation() {
+        if (shortVideoNavigating) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "reset navigation blockedPackage=$shortVideoBlockedPackage attempts=$shortVideoRetryAttempts pendingNotice=$pendingShortVideoNotice"
+            )
+        }
         shortVideoNavigating = false
         shortVideoBlockedPackage = null
         shortVideoRetryAt = 0L
@@ -494,6 +576,11 @@ class PauseAccessibilityService : AccessibilityService() {
             lastShortNoticeShownAt = SystemClock.elapsedRealtime()
             shortNoticeHideAt =
                 lastShortNoticeShownAt + SHORT_VIDEO_NOTICE_DURATION_MS
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "notice shown package=$ownerPackage"
+            )
 
             shortNoticeDismissRunnable?.let(handler::removeCallbacks)
             shortNoticeDismissRunnable = Runnable {
@@ -576,9 +663,10 @@ class PauseAccessibilityService : AccessibilityService() {
                 currentApplication !in launcherPackages &&
                 currentApplication != SYSTEM_UI_PACKAGE
             ) {
-                Log.d(
+                ShortVideoDiagnostics.log(
+                    this,
                     "PauseForeground",
-                    "Prefer focused window $currentApplication over transient launcher $usagePackage"
+                    "prefer focused window=$currentApplication over transient launcher=$usagePackage"
                 )
                 return currentApplication
             }
