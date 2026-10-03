@@ -92,6 +92,13 @@ class ShortVideoRegressionTest {
     private fun advance(ms: Long) = ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
     private fun player() = node("clips_viewer_view_pager")
     private fun safeTab(selected: Boolean = true) = node("search_tab", selected = selected)
+    private fun playerWithWorkingExit(): AccessibilityNodeInfo {
+        val tab = safeTab()
+        `when`(tab.contentDescription).thenReturn("Home")
+        `when`(tab.isClickable).thenReturn(true)
+        `when`(tab.performAction(AccessibilityNodeInfo.ACTION_CLICK)).thenReturn(true)
+        return node(children = listOf(tab, player()))
+    }
 
     @Test fun visibleSearchTabIsNotProofOfExit() {
         assertFalse(ShortVideoDetector.isConfirmedSafeSurface(instagram, node(children = listOf(safeTab(false)))))
@@ -160,7 +167,7 @@ class ShortVideoRegressionTest {
     }
 
     @Test fun missingRootBreaksConfirmationAndNoticeAppearsOnceAfterExit() {
-        currentRoot = node(children = listOf(player()))
+        currentRoot = playerWithWorkingExit()
         enforce()
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce()
@@ -181,7 +188,7 @@ class ShortVideoRegressionTest {
     }
 
     @Test fun immediateReentryIsBlockedWithoutRepeatingNotice() {
-        currentRoot = node(children = listOf(player()))
+        currentRoot = playerWithWorkingExit()
         enforce()
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce()
@@ -194,7 +201,7 @@ class ShortVideoRegressionTest {
         assertEquals(noticeTime, field("lastShortNoticeShownAt"))
     }
     @Test fun noticeKeepsSameViewAndDeadlineDuringDetectionBounce() {
-        currentRoot = node(children = listOf(player()))
+        currentRoot = playerWithWorkingExit()
         enforce()
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce()
@@ -215,7 +222,7 @@ class ShortVideoRegressionTest {
     }
 
     @Test fun unstableScreenCannotRearmNoticeAfterCooldown() {
-        currentRoot = node(children = listOf(player()))
+        currentRoot = playerWithWorkingExit()
         enforce()
         currentRoot = node(children = listOf(safeTab()))
         advance(300); enforce(); advance(500); enforce()
