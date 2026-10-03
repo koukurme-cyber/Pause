@@ -685,6 +685,16 @@ class PauseAccessibilityService : AccessibilityService() {
             )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
+            ?: shortNoticePackage?.takeIf { owner ->
+                // A focusable notice owns focus; its visible underlying app is
+                // still the foreground app even when Usage Access lags behind.
+                shortNoticeOverlay != null && windows.any { window ->
+                    window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                        window.root?.let { root ->
+                            root.packageName?.toString() == owner && root.isVisibleToUser
+                        } == true
+                }
+            }
 
         // Usage Access is normally the strongest foreground signal, but Pixel
         // launcher/Recents animations can leave a stale launcher ACTIVITY_RESUMED
