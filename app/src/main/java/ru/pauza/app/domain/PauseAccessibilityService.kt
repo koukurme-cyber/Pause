@@ -145,23 +145,7 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        val resolvedForegroundPackage = resolveForegroundPackage(event) ?: return
-        val shortNavigationPackage = shortVideoBlockedPackage
-        val foregroundPackage =
-            if (
-                shortVideoNavigating &&
-                shortNavigationPackage != null &&
-                resolvedForegroundPackage != shortNavigationPackage &&
-                resolveApplicationRoot(shortNavigationPackage) != null
-            ) {
-                Log.d(
-                    "PauseShortVideo",
-                    "Keep short-video navigation in $shortNavigationPackage while foreground reports $resolvedForegroundPackage"
-                )
-                shortNavigationPackage
-            } else {
-                resolvedForegroundPackage
-            }
+        val foregroundPackage = resolveForegroundPackage(event) ?: return
 
         if (shortNoticePackage != null && foregroundPackage != shortNoticePackage) {
             hideShortNotice()
@@ -568,21 +552,40 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        // Primary detector: Android Usage Access. Unlike Accessibility windows,
-        // this records the application that actually entered the resumed state.
-        UsageAccessMonitor.foregroundPackage(this)?.let { return it }
-
-        // Fallback: accessibility windows/events for OEMs that delay usage events.
         val currentApplication = windows.asSequence()
             .filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                     !it.isInPictureInPictureMode
             }
             .filter { it.isActive || it.isFocused }
-            .sortedByDescending { it.isActive }
+            .sortedWith(
+                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
+                    .thenByDescending { it.isActive }
+            )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
 
+        // Usage Access is normally the strongest foreground signal, but Pixel
+        // launcher/Recents animations can leave a stale launcher ACTIVITY_RESUMED
+        // event while another application's window is already focused again.
+        val usagePackage = UsageAccessMonitor.foregroundPackage(this)
+        if (!usagePackage.isNullOrBlank()) {
+            if (
+                usagePackage in launcherPackages &&
+                !currentApplication.isNullOrBlank() &&
+                currentApplication !in launcherPackages &&
+                currentApplication != SYSTEM_UI_PACKAGE
+            ) {
+                Log.d(
+                    "PauseForeground",
+                    "Prefer focused window $currentApplication over transient launcher $usagePackage"
+                )
+                return currentApplication
+            }
+            return usagePackage
+        }
+
+        // Fallback: accessibility windows/events for OEMs that delay usage events.
         if (!currentApplication.isNullOrBlank()) return currentApplication
 
         val rootPackage = rootInActiveWindow?.packageName?.toString()
