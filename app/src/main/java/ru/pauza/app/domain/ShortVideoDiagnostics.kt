@@ -37,6 +37,9 @@ object ShortVideoDiagnostics {
             val file = file(context)
             runCatching {
                 file.parentFile?.mkdirs()
+                if (!file.exists() || file.length() == 0L) {
+                    file.writeText(header(), Charsets.UTF_8)
+                }
                 file.appendText(line, Charsets.UTF_8)
                 trimIfNeeded(file)
             }
