@@ -212,7 +212,7 @@ class ShortVideoRegressionTest {
         assertEquals(true, field("shortVideoNavigating"))
         assertEquals(noticeTime, field("lastShortNoticeShownAt"))
     }
-    @Test fun noticeKeepsSameViewAndDeadlineDuringDetectionBounce() {
+    @Test fun noticeStaysUntilAcknowledgedAndDoesNotDuplicate() {
         currentRoot = playerWithWorkingExit()
         enforce()
         assertTrue((field("lastShortNoticeShownAt") as Long) > 0L)
@@ -220,17 +220,23 @@ class ShortVideoRegressionTest {
         advance(100); enforce()
         advance(500); enforce()
         val overlay = field("shortNoticeOverlay")
-        val deadline = field("shortNoticeHideAt")
         assertNotNull(overlay)
         currentRoot = node(children = listOf(player()))
         advance(100); enforce()
         assertSame(overlay, field("shortNoticeOverlay"))
-        assertEquals(deadline, field("shortNoticeHideAt"))
         currentRoot = node(children = listOf(safeTab()))
         advance(100); enforce()
         advance(500); enforce()
         assertSame(overlay, field("shortNoticeOverlay"))
-        advance(1600); enforce()
+        advance(30_000); enforce()
+        assertSame(overlay, field("shortNoticeOverlay"))
+        val container = overlay as android.view.ViewGroup
+        val card = container.getChildAt(0) as android.view.ViewGroup
+        val button = card.getChildAt(card.childCount - 1) as android.widget.Button
+        assertEquals("ОК", button.text.toString())
+        assertTrue(button.performClick())
+        assertNull(field("shortNoticeOverlay"))
+        enforce()
         assertNull(field("shortNoticeOverlay"))
     }
 

@@ -17,6 +17,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -61,8 +62,6 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastShortNoticeShownAt = 0L
     private var lastDiagnosticsForeground: String? = null
     private var shortNoticeOverlay: View? = null
-    private var shortNoticeDismissRunnable: Runnable? = null
-    private var shortNoticeHideAt = 0L
     private var shortNoticePackage: String? = null
     private var shortNoticeArmed = true
     private var shortSafeSince = 0L
@@ -107,7 +106,6 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
-        expireShortNoticeIfNeeded()
 
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
@@ -543,7 +541,7 @@ class PauseAccessibilityService : AccessibilityService() {
             textSize = 14f
             setTextColor(Color.rgb(25, 27, 26))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            maxLines = 1
+            maxLines = 2
         }
         val body = TextView(this).apply {
             text = "Во время Паузы Shorts, Reels и короткие видео RUTUBE недоступны."
@@ -571,6 +569,20 @@ class PauseAccessibilityService : AccessibilityService() {
             )
         )
 
+        val dismiss = Button(this).apply {
+            text = "ОК"
+            contentDescription = "Закрыть уведомление"
+            setTextColor(Color.rgb(57, 103, 70))
+            setOnClickListener {
+                pendingShortVideoNotice = false
+                shortNoticeArmed = false
+                shortSafeSince = 0L
+                ShortVideoDiagnostics.log(this@PauseAccessibilityService, "PauseShortVideo", "notice acknowledged package=$ownerPackage")
+                hideShortNotice()
+            }
+        }
+        card.addView(dismiss, LinearLayout.LayoutParams(dp(64), dp(48)))
+
         val container = FrameLayout(this).apply {
             setPadding(dp(18), 0, dp(18), 0)
             addView(
@@ -587,7 +599,7 @@ class PauseAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -602,23 +614,13 @@ class PauseAccessibilityService : AccessibilityService() {
             shortNoticePackage = ownerPackage
             shortNoticeArmed = false
             lastShortNoticeShownAt = SystemClock.elapsedRealtime()
-            shortNoticeHideAt =
-                lastShortNoticeShownAt + SHORT_VIDEO_NOTICE_DURATION_MS
             ShortVideoDiagnostics.log(
                 this,
                 "PauseShortVideo",
                 "notice shown package=$ownerPackage"
             )
 
-            shortNoticeDismissRunnable?.let(handler::removeCallbacks)
-            shortNoticeDismissRunnable = Runnable {
-                expireShortNoticeIfNeeded()
-            }.also { runnable ->
-                handler.postDelayed(
-                    runnable,
-                    SHORT_VIDEO_NOTICE_DURATION_MS
-                )
-            }
+
         }
     }
 
@@ -784,20 +786,7 @@ class PauseAccessibilityService : AccessibilityService() {
         overlayTimer = null
     }
 
-    private fun expireShortNoticeIfNeeded() {
-        if (
-            shortNoticeOverlay != null &&
-            shortNoticeHideAt > 0L &&
-            SystemClock.elapsedRealtime() >= shortNoticeHideAt
-        ) {
-            hideShortNotice()
-        }
-    }
-
     private fun hideShortNotice() {
-        shortNoticeDismissRunnable?.let(handler::removeCallbacks)
-        shortNoticeDismissRunnable = null
-        shortNoticeHideAt = 0L
         shortNoticePackage = null
 
         val current = shortNoticeOverlay ?: return
@@ -827,7 +816,6 @@ class PauseAccessibilityService : AccessibilityService() {
         private const val SHORT_VIDEO_NAVIGATION_COOLDOWN_MS = 2_800L
         private const val SHORT_VIDEO_EXIT_CONFIRM_MS = 450L
         private const val SHORT_VIDEO_NOTICE_REARM_MS = 2_000L
-        private const val SHORT_VIDEO_NOTICE_DURATION_MS = 1_600L
         private const val SHORT_VIDEO_NOTICE_MIN_GAP_MS = 3_000L
         private const val SHORT_CONTENT_SCAN_THROTTLE_MS = 300L
     }
