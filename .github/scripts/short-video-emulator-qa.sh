@@ -34,6 +34,27 @@ foreground_line() {
     grep -E -m1 "topResumedActivity=|mResumedActivity=|ResumedActivity:" || true
 }
 
+focused_app_line() {
+  adb shell dumpsys activity activities 2>/dev/null |
+    grep -E -m1 "mCurrentFocus=Window\{.*com\.instagram\.android|mFocusedApp=ActivityRecord\{.*com\.instagram\.android" || true
+}
+
+fixture_focused_stably() {
+  local stable_samples=0
+  for _ in $(seq 1 20); do
+    if focused_app_line | grep -Fq "$FIXTURE_PKG"; then
+      stable_samples=$((stable_samples + 1))
+      if [ "$stable_samples" -ge 3 ]; then
+        return 0
+      fi
+    else
+      stable_samples=0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
 fail() {
   echo "QA FAIL: $*" | tee -a "$ARTIFACT_DIR/summary.txt"
   snapshot "failure"
@@ -283,9 +304,13 @@ adb shell am start -W -n "$FIXTURE_ACTIVITY" >/dev/null
 wait_for_fixture_state_count "STATE_REELS_PLAYER" 1 "direct Reels fixture launch"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 1 "direct Reels redirect"
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test1-direct-reels.txt"
-if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
-  fail "Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
+FOCUS="$(focused_app_line)"
+{
+  echo "activity=$FG"
+  echo "focus=$FOCUS"
+} | tee "$ARTIFACT_DIR/test1-direct-reels.txt"
+if ! fixture_focused_stably; then
+  fail "Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-direct-safe"
 
@@ -298,9 +323,13 @@ wait_for_fixture_state_count "STATE_REELS_PLAYER" 2 "Reels navigation click"
 wait_for_fixture_state_count "STATE_SAFE_HOME" 2 "Reels navigation redirect"
 sleep 0.8
 FG="$(foreground_line)"
-echo "$FG" | tee "$ARTIFACT_DIR/test1-click-reels.txt"
-if ! echo "$FG" | grep -Fq "$FIXTURE_PKG"; then
-  fail "clicked Reels redirect left Instagram fixture instead of staying in allowed app: $FG"
+FOCUS="$(focused_app_line)"
+{
+  echo "activity=$FG"
+  echo "focus=$FOCUS"
+} | tee "$ARTIFACT_DIR/test1-click-reels.txt"
+if ! fixture_focused_stably; then
+  fail "clicked Reels redirect did not keep Instagram fixture focused: activity=$FG focus=$FOCUS"
 fi
 snapshot "reels-click-safe"
 
