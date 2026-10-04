@@ -48,13 +48,14 @@ class PauseStore(context: Context) {
             }.apply()
         }
 
-    var lastScheduleOccurrenceKey: String?
-        get() = prefs.getString(KEY_LAST_SCHEDULE_OCCURRENCE, null)
+    var handledScheduleOccurrences: Set<String>
+        get() = prefs.getStringSet(KEY_HANDLED_SCHEDULE_OCCURRENCES, emptySet())
+            ?.toSet()
+            .orEmpty()
         set(value) {
-            prefs.edit().apply {
-                if (value.isNullOrBlank()) remove(KEY_LAST_SCHEDULE_OCCURRENCE)
-                else putString(KEY_LAST_SCHEDULE_OCCURRENCE, value)
-            }.apply()
+            prefs.edit()
+                .putStringSet(KEY_HANDLED_SCHEDULE_OCCURRENCES, value.takeLast(64).toSet())
+                .apply()
         }
 
     var sessionEndEpochMs: Long
@@ -232,7 +233,7 @@ class PauseStore(context: Context) {
         private const val KEY_SELECTED = "selected_packages"
         private const val KEY_SAVED_APP_SETS = "saved_app_sets"
         private const val KEY_ACTIVE_SAVED_SET_NAME = "active_saved_set_name"
-        private const val KEY_LAST_SCHEDULE_OCCURRENCE = "last_schedule_occurrence"
+        private const val KEY_HANDLED_SCHEDULE_OCCURRENCES = "handled_schedule_occurrences"
         private const val KEY_SESSION_END = "session_end_epoch_ms"
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
