@@ -219,25 +219,25 @@ class ShortVideoRegressionTest {
         currentRoot = node(children = listOf(safeTab()))
         advance(100); enforce()
         advance(500); enforce()
-        val overlay = field("shortNoticeOverlay")
-        assertNotNull(overlay)
+        val dialog = field("shortNoticeDialog") as android.app.AlertDialog?
+        assertNotNull(dialog)
+        assertTrue(dialog!!.isShowing)
         currentRoot = node(children = listOf(player()))
         advance(100); enforce()
-        assertSame(overlay, field("shortNoticeOverlay"))
+        assertSame(dialog, field("shortNoticeDialog"))
         currentRoot = node(children = listOf(safeTab()))
         advance(100); enforce()
         advance(500); enforce()
-        assertSame(overlay, field("shortNoticeOverlay"))
+        assertSame(dialog, field("shortNoticeDialog"))
         advance(30_000); enforce()
-        assertSame(overlay, field("shortNoticeOverlay"))
-        val container = overlay as android.view.ViewGroup
-        val card = container.getChildAt(0) as android.view.ViewGroup
-        val button = card.getChildAt(card.childCount - 1) as android.widget.Button
-        assertEquals("ОК", button.text.toString())
+        assertSame(dialog, field("shortNoticeDialog"))
+        val button = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+        assertNotNull(button)
+        assertEquals("OK", button.text.toString().uppercase())
         assertTrue(button.performClick())
-        assertNull(field("shortNoticeOverlay"))
+        assertNull(field("shortNoticeDialog"))
         enforce()
-        assertNull(field("shortNoticeOverlay"))
+        assertNull(field("shortNoticeDialog"))
     }
 
     @Test fun unstableScreenCannotRearmNoticeAfterCooldown() {
