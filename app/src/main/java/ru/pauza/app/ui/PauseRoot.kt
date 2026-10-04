@@ -560,7 +560,7 @@ private fun SetupChecklistScreen(
                 SetupChecklistCard(
                     number = "1",
                     title = "Разрешить запрещённые настройки",
-                    text = "Откройте настройки приложения «Пауза». На HyperOS: меню ⋮ → «Разрешить запрещённые настройки». Если такого пункта нет, просто вернитесь и подтвердите шаг.",
+                    text = "На разных оболочках Android предоставление этого разрешения устроено по-разному: название пункта и путь к нему могут отличаться. На HyperOS: настройки приложения «Пауза» → меню ⋮ → «Разрешить запрещённые настройки». Если такого пункта нет, вернитесь и подтвердите шаг.",
                     completed = restrictedSettingsConfirmed,
                     enabled = !restrictedSettingsConfirmed,
                     buttonText = if (restrictedSettingsOpened) {
@@ -2184,6 +2184,8 @@ private fun SettingsScreen(
     var editingSetIndex by remember { mutableStateOf<Int?>(null) }
     var creatingSet by remember { mutableStateOf(false) }
     var shortVideoDiagnosticsStatus by remember { mutableStateOf<String?>(null) }
+    var versionTapCount by rememberSaveable { mutableIntStateOf(0) }
+    var diagnosticsUnlocked by rememberSaveable { mutableStateOf(false) }
 
     if (creatingSet || editingSetIndex != null) {
         val editingSet = editingSetIndex?.let(savedSets::getOrNull)
@@ -2451,10 +2453,65 @@ private fun SettingsScreen(
                         )
                     }
 
-                    if (blockShortVideos) {
-                        Spacer(Modifier.height(12.dp))
-                        HorizontalDivider(color = Color(0xFFE3E7E0))
-                        Spacer(Modifier.height(10.dp))
+
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SavedSetsSettingsCard(
+                savedSets = savedSets,
+                activeSavedSetName = activeSavedSetName,
+                onCreate = {
+                    editingSetIndex = null
+                    creatingSet = true
+                },
+                onEdit = { index ->
+                    editingSetIndex = index
+                    creatingSet = false
+                },
+                onDelete = onDeleteSet,
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                "Версия " + BuildConfig.VERSION_NAME,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (!diagnosticsUnlocked) {
+                            versionTapCount += 1
+                            if (versionTapCount >= 20) {
+                                diagnosticsUnlocked = true
+                                versionTapCount = 0
+                            }
+                        }
+                    }
+                    .padding(vertical = 10.dp),
+                color = PauseMuted,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+
+            if (diagnosticsUnlocked) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            "Диагностика коротких видео",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2492,35 +2549,8 @@ private fun SettingsScreen(
                         }
                     }
                 }
+                Spacer(Modifier.height(12.dp))
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            SavedSetsSettingsCard(
-                savedSets = savedSets,
-                activeSavedSetName = activeSavedSetName,
-                onCreate = {
-                    editingSetIndex = null
-                    creatingSet = true
-                },
-                onEdit = { index ->
-                    editingSetIndex = index
-                    creatingSet = false
-                },
-                onDelete = onDeleteSet,
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                "Версия " + BuildConfig.VERSION_NAME,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                color = PauseMuted,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center
-            )
             }
         }
 
@@ -2628,6 +2658,16 @@ private fun ReviewScreen(
                         "Проверьте банковские, транспортные, навигационные и другие важные приложения.",
                         modifier = Modifier.fillMaxWidth(),
                         color = PauseMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = TextAlign.Start
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "В некоторых приложениях во время активной Паузы регистрация или создание нового аккаунта может быть недоступно.",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF8E2B22),
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         textAlign = TextAlign.Start
