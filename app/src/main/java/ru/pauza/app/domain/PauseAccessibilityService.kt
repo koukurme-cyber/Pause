@@ -1,27 +1,22 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
+import android.app.AlertDialog
 import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
-import android.view.ContextThemeWrapper
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
-import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import ru.pauza.app.MainActivity
 import ru.pauza.app.data.InstalledAppsRepository
@@ -63,8 +58,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastShortContentScanAt = 0L
     private var lastShortNoticeShownAt = 0L
     private var lastDiagnosticsForeground: String? = null
-    private var shortNoticeOverlay: View? = null
-    private var shortNoticeWindowManager: WindowManager? = null
+    private var shortNoticeDialog: AlertDialog? = null
     private var shortNoticePackage: String? = null
     private var shortNoticeArmed = true
     private var shortSafeSince = 0L
@@ -503,145 +497,61 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun showShortVideoOverlay(ownerPackage: String) {
-        if (shortNoticeOverlay != null) return
+        if (shortNoticeDialog?.isShowing == true) return
 
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(12), dp(12))
-            background = roundedBackground(
-                color = Color.WHITE,
-                radiusDp = 22f
-            )
-            elevation = dp(8).toFloat()
-        }
-
-        val icon = TextView(this).apply {
-            text = "Ⅱ"
-            gravity = Gravity.CENTER
-            textSize = 18f
-            setTextColor(Color.rgb(57, 103, 70))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = roundedBackground(
-                color = Color.rgb(232, 241, 226),
-                radiusDp = 999f
-            )
-        }
-        card.addView(
-            icon,
-            LinearLayout.LayoutParams(dp(46), dp(46)).apply {
-                marginEnd = dp(12)
-            }
+        val dialog = AlertDialog.Builder(
+            this,
+            android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
         )
-
-        val copy = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val title = TextView(this).apply {
-            text = "Короткие видео заблокированы"
-            textSize = 14f
-            setTextColor(Color.rgb(25, 27, 26))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            maxLines = 2
-        }
-        val body = TextView(this).apply {
-            text = "Во время Паузы Shorts, Reels и короткие видео RUTUBE недоступны."
-            textSize = 11.5f
-            setTextColor(Color.rgb(118, 121, 119))
-            maxLines = 2
-        }
-        copy.addView(title)
-        copy.addView(
-            body,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp(3)
-            }
-        )
-
-        card.addView(
-            copy,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        val dismiss = Button(ContextThemeWrapper(this, android.R.style.Theme_Material_Light)).apply {
-            text = "ОК"
-            contentDescription = "Закрыть уведомление"
-            setOnTouchListener { view, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        view.scaleX = 0.92f
-                        view.scaleY = 0.92f
-                        view.alpha = 0.62f
-                    }
-                    MotionEvent.ACTION_UP,
-                    MotionEvent.ACTION_CANCEL -> {
-                        view.scaleX = 1f
-                        view.scaleY = 1f
-                        view.alpha = 1f
-                    }
-                }
-                false
-            }
-            setOnClickListener {
+            .setTitle("Короткие видео заблокированы")
+            .setMessage("Во время Паузы Shorts, Reels и короткие видео RUTUBE недоступны.")
+            .setPositiveButton(android.R.string.ok) { currentDialog, _ ->
                 pendingShortVideoNotice = false
                 shortNoticeArmed = false
                 shortSafeSince = 0L
-                ShortVideoDiagnostics.log(this@PauseAccessibilityService, "PauseShortVideo", "notice acknowledged package=$ownerPackage")
-                hideShortNotice()
+                ShortVideoDiagnostics.log(
+                    this@PauseAccessibilityService,
+                    "PauseShortVideo",
+                    "notice acknowledged package=$ownerPackage"
+                )
+                currentDialog.dismiss()
+            }
+            .create()
+
+        dialog.setCancelable(false)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.window?.setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+        dialog.setOnDismissListener {
+            if (shortNoticeDialog === dialog) {
+                shortNoticeDialog = null
+                shortNoticePackage = null
+                ShortVideoDiagnostics.log(
+                    this@PauseAccessibilityService,
+                    "PauseShortVideo",
+                    "notice removed"
+                )
             }
         }
-        card.addView(dismiss, LinearLayout.LayoutParams(dp(88), dp(48)))
 
-        val container = FrameLayout(this).apply {
-            setPadding(dp(18), 0, dp(18), 0)
-            setBackgroundColor(Color.argb(90, 0, 0, 0))
-            isClickable = true
-            addView(
-                card,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER
-                )
-            )
-        }
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.CENTER
-            setTitle("PauzaShortVideoNotice")
-        }
-
-        val noticeWindowManager = getSystemService(WindowManager::class.java)
         runCatching {
-            noticeWindowManager.addView(container, params)
-            shortNoticeWindowManager = noticeWindowManager
-            shortNoticeOverlay = container
+            shortNoticeDialog = dialog
             shortNoticePackage = ownerPackage
             shortNoticeArmed = false
             lastShortNoticeShownAt = SystemClock.elapsedRealtime()
+            dialog.show()
             ShortVideoDiagnostics.log(
                 this,
                 "PauseShortVideo",
                 "notice shown package=$ownerPackage"
             )
-
-
+        }.onFailure { error ->
+            shortNoticeDialog = null
+            shortNoticePackage = null
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "notice show failed: ${error.javaClass.simpleName}: ${error.message}"
+            )
         }
     }
 
@@ -655,21 +565,6 @@ class PauseAccessibilityService : AccessibilityService() {
             ?: rootInActiveWindow?.takeIf {
                 it.packageName?.toString() == targetPackage
             }
-
-    private fun roundedBackground(
-        color: Int,
-        radiusDp: Float,
-    ) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(color)
-        cornerRadius = dp(radiusDp).toFloat()
-    }
-
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
-
-    private fun dp(value: Float): Int =
-        (value * resources.displayMetrics.density).toInt()
 
     private fun hasActiveSystemUiSurface(event: AccessibilityEvent?): Boolean {
         val eventPackage = event?.packageName?.toString()
@@ -705,7 +600,7 @@ class PauseAccessibilityService : AccessibilityService() {
             ?: shortNoticePackage?.takeIf { owner ->
                 // A focusable notice owns focus; its visible underlying app is
                 // still the foreground app even when Usage Access lags behind.
-                shortNoticeOverlay != null && windows.any { window ->
+                shortNoticeDialog?.isShowing == true && windows.any { window ->
                     window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                         window.root?.let { root ->
                             root.packageName?.toString() == owner && root.isVisibleToUser
@@ -818,19 +713,15 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun hideShortNotice() {
-        val current = shortNoticeOverlay ?: return
-        val manager = shortNoticeWindowManager ?: getSystemService(WindowManager::class.java)
+        val current = shortNoticeDialog ?: return
         runCatching {
-            // Detach synchronously, using the exact manager that added this view.
-            // Keep the reference if removal fails so no orphan/duplicate is created.
-            manager.removeViewImmediate(current)
-        }.onSuccess {
-            shortNoticeOverlay = null
-            shortNoticeWindowManager = null
-            shortNoticePackage = null
-            ShortVideoDiagnostics.log(this, "PauseShortVideo", "notice removed")
+            current.dismiss()
         }.onFailure { error ->
-            ShortVideoDiagnostics.log(this, "PauseShortVideo", "notice removal failed: ${error.javaClass.simpleName}: ${error.message}")
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseShortVideo",
+                "notice removal failed: ${error.javaClass.simpleName}: ${error.message}"
+            )
         }
     }
 
