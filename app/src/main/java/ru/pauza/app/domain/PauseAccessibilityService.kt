@@ -105,6 +105,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private fun enforceCurrentWindow(event: AccessibilityEvent? = null) {
 
+        SavedSetScheduleEngine.maybeStart(this, store)
+
         val end = store.sessionEndEpochMs
         if (end <= 0L || System.currentTimeMillis() >= end) {
             resetShortVideoNavigation()
