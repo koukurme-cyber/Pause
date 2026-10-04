@@ -138,4 +138,48 @@ class SavedSetScheduleEngineTest {
         )
         assertEquals(0L, store.sessionEndEpochMs)
     }
+    @Test
+    fun occurrenceDuringActivePauseIsSkippedAndNotReplayed() {
+        val now = Calendar.getInstance().apply {
+            set(2026, Calendar.OCTOBER, 5, 8, 30, 10)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        store.savedAppSets = listOf(
+            PauseStore.SavedAppSet(
+                name = "Работа",
+                packages = setOf("com.example.mail"),
+                schedules = listOf(
+                    PauseStore.SavedSetSchedule(
+                        id = "work-overlap",
+                        enabled = true,
+                        daysOfWeek = setOf(1),
+                        startMinuteOfDay = 8 * 60 + 30,
+                        durationMinutes = 60,
+                    )
+                )
+            )
+        )
+        store.sessionEndEpochMs = now + 30_000L
+
+        assertFalse(
+            SavedSetScheduleEngine.maybeStart(
+                context = context,
+                store = store,
+                nowEpochMs = now,
+            )
+        )
+
+        store.clearSession()
+
+        assertFalse(
+            SavedSetScheduleEngine.maybeStart(
+                context = context,
+                store = store,
+                nowEpochMs = now + 40_000L,
+            )
+        )
+        assertEquals(emptySet<String>(), store.selectedPackages)
+    }
+
 }
