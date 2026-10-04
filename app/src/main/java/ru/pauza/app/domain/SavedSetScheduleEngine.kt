@@ -13,7 +13,7 @@ object SavedSetScheduleEngine {
         store: PauseStore,
         nowEpochMs: Long = System.currentTimeMillis(),
     ): Boolean {
-        if (store.sessionEndEpochMs > nowEpochMs) return false
+        val activeSessionEnd = store.sessionEndEpochMs
 
         val nowCalendar = Calendar.getInstance().apply {
             timeInMillis = nowEpochMs
@@ -81,6 +81,15 @@ object SavedSetScheduleEngine {
         // the first one starts and the others do not fire a few seconds later.
         handled += due.map { it.key }
         store.handledScheduleOccurrences = handled
+
+        if (activeSessionEnd > nowEpochMs) {
+            ShortVideoDiagnostics.log(
+                context,
+                "PauseSchedule",
+                "scheduled occurrence skipped because another pause is active"
+            )
+            return false
+        }
 
         val occurrence = due.minByOrNull { it.scheduledAt } ?: return false
         val scheduledEnd =
