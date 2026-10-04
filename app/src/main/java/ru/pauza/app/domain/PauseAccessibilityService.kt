@@ -517,7 +517,7 @@ class PauseAccessibilityService : AccessibilityService() {
                     "PauseShortVideo",
                     "notice acknowledged package=$ownerPackage"
                 )
-                if (shortNoticeDialog === dialog) {
+                if (shortNoticeDialog === currentDialog) {
                     shortNoticeDialog = null
                     shortNoticePackage = null
                 }
