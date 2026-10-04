@@ -572,6 +572,11 @@ class PauseAccessibilityService : AccessibilityService() {
             // not change the button's size, shape, colors or pressed state.
             val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             val decor = dialog.window?.decorView as? ViewGroup
+            if (positiveButton != null) {
+                // Keep the actual AlertDialog button, but give it Android's own
+                // default button background instead of the borderless dialog style.
+                positiveButton.setBackgroundResource(android.R.drawable.btn_default)
+            }
             if (positiveButton != null && decor != null) {
                 positiveButton.post {
                     if (
