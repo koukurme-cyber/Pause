@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.AnimatedVisibility
 import android.app.ActivityManager
+import android.app.TimePickerDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -89,6 +90,7 @@ import ru.pauza.app.ui.theme.PauseGreenSoft
 import ru.pauza.app.ui.theme.PauseMuted
 import ru.pauza.app.ui.theme.PauseWarning
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -211,6 +213,19 @@ fun PauseRoot(
     }
 
     LaunchedEffect(Unit) {
+        while (true) {
+            val storedEnd = store.sessionEndEpochMs
+            if (storedEnd > System.currentTimeMillis() && storedEnd != sessionEnd) {
+                selected = store.selectedPackages
+                activeSavedSetName = store.activeSavedSetName
+                sessionEnd = storedEnd
+                screen = Screen.ACTIVE
+            }
+            delay(500)
+        }
+    }
+
+    LaunchedEffect(Unit) {
         if (sessionEnd > System.currentTimeMillis()) {
             NotificationSilencer.applyForPause(context, store)
             val restored = withContext(Dispatchers.IO) {
@@ -324,7 +339,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             savedSets = savedSets,
             activeSavedSetName = activeSavedSetName,
-            onUpsertSet = { index, name, packages ->
+            onUpsertSet = { index, name, packages, schedules ->
                 val normalizedName =
                     name.trim().take(PauseStore.MAX_SAVED_APP_SET_NAME_LENGTH)
                 if (index == null) {
@@ -332,6 +347,7 @@ fun PauseRoot(
                         savedSets = savedSets + PauseStore.SavedAppSet(
                             name = normalizedName,
                             packages = packages,
+                            schedules = schedules,
                         )
                         store.savedAppSets = savedSets
                     }
@@ -340,6 +356,7 @@ fun PauseRoot(
                     val updated = PauseStore.SavedAppSet(
                         name = normalizedName,
                         packages = packages,
+                        schedules = schedules,
                     )
                     savedSets = savedSets.toMutableList().also {
                         it[index] = updated
@@ -1222,6 +1239,16 @@ private fun SavedSetsSettingsCard(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (savedSet.schedules.isNotEmpty()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        scheduleListSummary(savedSet.schedules),
+                                        color = PauseMuted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = { onDelete(index) },
@@ -1442,14 +1469,27 @@ private fun SavedSetEditorScreen(
     alwaysApps: List<InstalledApp>,
     initialName: String,
     initialPackages: Set<String>,
+    initialSchedules: List<PauseStore.SavedSetSchedule>,
     existingNames: List<String>,
     isNew: Boolean,
-    onSave: (String, Set<String>) -> Unit,
+    onSave: (String, Set<String>, List<PauseStore.SavedSetSchedule>) -> Unit,
     onBack: () -> Unit,
 ) {
-    BackHandler(onBack = onBack)
-
     var name by remember(initialName) { mutableStateOf(initialName) }
+    var schedules by remember(initialSchedules) { mutableStateOf(initialSchedules) }
+    var scheduleEditorOpen by remember { mutableStateOf(false) }
+
+    if (scheduleEditorOpen) {
+        SavedSetScheduleScreen(
+            setName = name.trim().ifBlank { "Набор" },
+            schedules = schedules,
+            onSchedulesChange = { schedules = it },
+            onBack = { scheduleEditorOpen = false },
+        )
+        return
+    }
+
+    BackHandler(onBack = onBack)
     var selectedPackages by remember(initialPackages) {
         mutableStateOf(initialPackages.intersect(apps.map { it.packageName }.toSet()))
     }
@@ -1535,6 +1575,38 @@ private fun SavedSetEditorScreen(
             )
 
             Spacer(Modifier.height(6.dp))
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { scheduleEditorOpen = true },
+                shape = RoundedCornerShape(17.dp),
+                color = Color(0xFFFFFEFA),
+                border = BorderStroke(1.dp, Color(0xFFD9DDD5))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Расписание",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            scheduleListSummary(schedules),
+                            color = PauseMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Text("›", color = PauseMuted, fontSize = 24.sp)
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = searchQuery,
@@ -1623,7 +1695,7 @@ private fun SavedSetEditorScreen(
 
             Button(
                 onClick = {
-                    onSave(normalizedName, selectedPackages)
+                    onSave(normalizedName, selectedPackages, schedules)
                 },
                 enabled = canSave,
                 modifier = Modifier
@@ -1645,13 +1717,456 @@ private fun SavedSetEditorScreen(
     }
 }
 
+
+private fun scheduleListSummary(
+    schedules: List<PauseStore.SavedSetSchedule>,
+): String {
+    if (schedules.isEmpty()) return "Не настроено"
+    val enabled = schedules.count { it.enabled }
+    return when {
+        enabled == 0 -> "Все правила выключены"
+        schedules.size == 1 -> {
+            val schedule = schedules.first()
+            "${formatScheduleDays(schedule.daysOfWeek)}, " +
+                "${formatScheduleTime(schedule.startMinuteOfDay)} · " +
+                "${formatScheduleDuration(schedule.durationMinutes)}" +
+                if (schedule.enabled) "" else " · выключено"
+        }
+        else -> "${schedules.size} правил · включено ${enabled}"
+    }
+}
+
+private fun formatScheduleDays(days: Set<Int>): String = when (days) {
+    setOf(1, 2, 3, 4, 5, 6, 7) -> "Каждый день"
+    setOf(1, 2, 3, 4, 5) -> "Пн–Пт"
+    setOf(6, 7) -> "Сб–Вс"
+    else -> {
+        val names = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+        days.sorted().joinToString(", ") { names.getOrElse(it - 1) { "?" } }
+    }
+}
+
+private fun formatScheduleTime(startMinuteOfDay: Int): String =
+    String.format(
+        Locale.US,
+        "%02d:%02d",
+        startMinuteOfDay.coerceIn(0, 1439) / 60,
+        startMinuteOfDay.coerceIn(0, 1439) % 60,
+    )
+
+private fun formatScheduleDuration(totalMinutes: Int): String {
+    val minutes = totalMinutes.coerceAtLeast(1)
+    val days = minutes / (24 * 60)
+    val hours = (minutes % (24 * 60)) / 60
+    val restMinutes = minutes % 60
+    return buildList {
+        if (days > 0) add("$days д")
+        if (hours > 0) add("$hours ч")
+        if (restMinutes > 0 || isEmpty()) add("$restMinutes мин")
+    }.joinToString(" ")
+}
+
+@Composable
+private fun SavedSetScheduleScreen(
+    setName: String,
+    schedules: List<PauseStore.SavedSetSchedule>,
+    onSchedulesChange: (List<PauseStore.SavedSetSchedule>) -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    val context = LocalContext.current
+    var durationRuleIndex by remember { mutableStateOf<Int?>(null) }
+
+    durationRuleIndex?.let { index ->
+        schedules.getOrNull(index)?.let { schedule ->
+            ScheduleDurationDialog(
+                durationMinutes = schedule.durationMinutes,
+                onDismiss = { durationRuleIndex = null },
+                onConfirm = { durationMinutes ->
+                    onSchedulesChange(
+                        schedules.toMutableList().also {
+                            if (index in it.indices) {
+                                it[index] = it[index].copy(durationMinutes = durationMinutes)
+                            }
+                        }
+                    )
+                    durationRuleIndex = null
+                }
+            )
+        } ?: run {
+            durationRuleIndex = null
+        }
+    }
+
+    SoftScreenBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onBack,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "‹",
+                        fontSize = 34.sp,
+                        lineHeight = 34.sp,
+                        color = Color(0xFF4F5952)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Расписание",
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        setName,
+                        color = PauseMuted,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Набор будет включаться автоматически. Если в этот момент уже идёт другая Пауза, она не будет заменена.",
+                color = PauseMuted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            Spacer(Modifier.height(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                schedules.forEachIndexed { index, schedule ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFFEFA).copy(alpha = .95f)
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Color(0xFFDCE3D9))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Правило ${index + 1}",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Switch(
+                                    checked = schedule.enabled,
+                                    onCheckedChange = { enabled ->
+                                        onSchedulesChange(
+                                            schedules.toMutableList().also {
+                                                it[index] = schedule.copy(enabled = enabled)
+                                            }
+                                        )
+                                    }
+                                )
+                                IconButton(
+                                    onClick = {
+                                        onSchedulesChange(
+                                            schedules.toMutableList().also {
+                                                it.removeAt(index)
+                                            }
+                                        )
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Text("×", color = PauseMuted, fontSize = 20.sp)
+                                }
+                            }
+
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Дни",
+                                color = PauseMuted,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(5.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                val dayNames = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+                                dayNames.forEachIndexed { dayIndex, label ->
+                                    val day = dayIndex + 1
+                                    val selected = day in schedule.daysOfWeek
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(width = 38.dp, height = 32.dp)
+                                            .clickable {
+                                                val nextDays =
+                                                    if (selected) {
+                                                        if (schedule.daysOfWeek.size <= 1) {
+                                                            schedule.daysOfWeek
+                                                        } else {
+                                                            schedule.daysOfWeek - day
+                                                        }
+                                                    } else {
+                                                        schedule.daysOfWeek + day
+                                                    }
+                                                onSchedulesChange(
+                                                    schedules.toMutableList().also {
+                                                        it[index] = schedule.copy(
+                                                            daysOfWeek = nextDays
+                                                        )
+                                                    }
+                                                )
+                                            },
+                                        shape = RoundedCornerShape(11.dp),
+                                        color = if (selected) {
+                                            Color(0xFFE0F2E2)
+                                        } else {
+                                            Color(0xFFF2F3F0)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (selected) {
+                                                Color(0xFF8FC39A)
+                                            } else {
+                                                Color(0xFFD9DDD5)
+                                            }
+                                        )
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                label,
+                                                color = if (selected) {
+                                                    Color(0xFF245E39)
+                                                } else {
+                                                    Color(0xFF626762)
+                                                },
+                                                fontSize = 11.sp,
+                                                fontWeight = if (selected) {
+                                                    FontWeight.SemiBold
+                                                } else {
+                                                    FontWeight.Normal
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        onSchedulesChange(
+                                            schedules.toMutableList().also {
+                                                it[index] = schedule.copy(
+                                                    daysOfWeek = setOf(1, 2, 3, 4, 5)
+                                                )
+                                            }
+                                        )
+                                    }
+                                ) { Text("Будни", fontSize = 11.sp) }
+                                TextButton(
+                                    onClick = {
+                                        onSchedulesChange(
+                                            schedules.toMutableList().also {
+                                                it[index] = schedule.copy(
+                                                    daysOfWeek = setOf(6, 7)
+                                                )
+                                            }
+                                        )
+                                    }
+                                ) { Text("Выходные", fontSize = 11.sp) }
+                                TextButton(
+                                    onClick = {
+                                        onSchedulesChange(
+                                            schedules.toMutableList().also {
+                                                it[index] = schedule.copy(
+                                                    daysOfWeek = (1..7).toSet()
+                                                )
+                                            }
+                                        )
+                                    }
+                                ) { Text("Все дни", fontSize = 11.sp) }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        TimePickerDialog(
+                                            context,
+                                            { _, hour, minute ->
+                                                onSchedulesChange(
+                                                    schedules.toMutableList().also {
+                                                        it[index] = schedule.copy(
+                                                            startMinuteOfDay = hour * 60 + minute
+                                                        )
+                                                    }
+                                                )
+                                            },
+                                            schedule.startMinuteOfDay / 60,
+                                            schedule.startMinuteOfDay % 60,
+                                            true,
+                                        ).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text(
+                                        "Начало " + formatScheduleTime(
+                                            schedule.startMinuteOfDay
+                                        ),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { durationRuleIndex = index },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text(
+                                        "На " + formatScheduleDuration(
+                                            schedule.durationMinutes
+                                        ),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (schedules.size < PauseStore.MAX_SCHEDULES_PER_SET) {
+                    OutlinedButton(
+                        onClick = {
+                            onSchedulesChange(
+                                schedules + PauseStore.SavedSetSchedule(
+                                    id = UUID.randomUUID().toString(),
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Добавить правило")
+                    }
+                }
+
+                if (schedules.isEmpty()) {
+                    Text(
+                        "Расписание не настроено. Набор можно запускать только вручную.",
+                        color = PauseMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF17633D)
+                )
+            ) {
+                Text("Готово", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleDurationDialog(
+    durationMinutes: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val initial = durationMinutes.coerceIn(1, PauseStore.MAX_SCHEDULE_DURATION_MINUTES)
+    var duration by remember(initial) {
+        mutableStateOf(
+            PauseDuration(
+                days = initial / (24 * 60),
+                hours = (initial % (24 * 60)) / 60,
+                minutes = initial % 60,
+            )
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Длительность Паузы") },
+        text = {
+            Column {
+                Text(
+                    "После этого времени доступ восстановится автоматически.",
+                    color = PauseMuted,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                DurationPicker(
+                    duration = duration,
+                    onChange = { duration = it }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val value = duration.totalMinutes
+                        .coerceIn(1L, PauseStore.MAX_SCHEDULE_DURATION_MINUTES.toLong())
+                        .toInt()
+                    onConfirm(value)
+                }
+            ) {
+                Text("Готово")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
+}
+
 @Composable
 private fun SettingsScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
     savedSets: List<PauseStore.SavedAppSet>,
     activeSavedSetName: String?,
-    onUpsertSet: (Int?, String, Set<String>) -> Unit,
+    onUpsertSet: (
+        Int?,
+        String,
+        Set<String>,
+        List<PauseStore.SavedSetSchedule>,
+    ) -> Unit,
     onDeleteSet: (Int) -> Unit,
     testModeEnabled: Boolean,
     onTestModeChanged: (Boolean) -> Unit,
@@ -1677,13 +2192,14 @@ private fun SettingsScreen(
             alwaysApps = alwaysApps,
             initialName = editingSet?.name.orEmpty(),
             initialPackages = editingSet?.packages.orEmpty(),
+            initialSchedules = editingSet?.schedules.orEmpty(),
             existingNames = savedSets
                 .mapIndexedNotNull { index, savedSet ->
                     if (index == editingSetIndex) null else savedSet.name
                 },
             isNew = creatingSet,
-            onSave = { name, packages ->
-                onUpsertSet(editingSetIndex, name, packages)
+            onSave = { name, packages, schedules ->
+                onUpsertSet(editingSetIndex, name, packages, schedules)
                 creatingSet = false
                 editingSetIndex = null
             },
