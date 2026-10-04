@@ -2211,7 +2211,7 @@ private fun SettingsScreen(
     var creatingSet by remember { mutableStateOf(false) }
     var shortVideoDiagnosticsStatus by remember { mutableStateOf<String?>(null) }
     var versionTapCount by rememberSaveable { mutableIntStateOf(0) }
-    var diagnosticsUnlocked by rememberSaveable { mutableStateOf(false) }
+    var showDiagnosticsDialog by rememberSaveable { mutableStateOf(false) }
 
     if (creatingSet || editingSetIndex != null) {
         val editingSet = editingSetIndex?.let(savedSets::getOrNull)
@@ -2237,6 +2237,70 @@ private fun SettingsScreen(
             },
         )
         return
+    }
+
+    if (showDiagnosticsDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showDiagnosticsDialog = false
+                shortVideoDiagnosticsStatus = null
+            },
+            title = {
+                Text("Диагностика")
+            },
+            text = {
+                Column {
+                    Text(
+                        "Сохраните лог, если нужно проверить работу блокировки коротких видео.",
+                        color = PauseMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+
+                    shortVideoDiagnosticsStatus?.let { status ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            status,
+                            color = PauseMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        shortVideoDiagnosticsStatus =
+                            ShortVideoDiagnostics.exportToDownloads(context)
+                                ?.let { "Лог сохранён: $it" }
+                                ?: "Не удалось сохранить лог"
+                    }
+                ) {
+                    Text("Сохранить лог")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            ShortVideoDiagnostics.clear(context)
+                            shortVideoDiagnosticsStatus = "Лог очищен"
+                        }
+                    ) {
+                        Text("Очистить")
+                    }
+                    TextButton(
+                        onClick = {
+                            showDiagnosticsDialog = false
+                            shortVideoDiagnosticsStatus = null
+                        }
+                    ) {
+                        Text("Закрыть")
+                    }
+                }
+            }
+        )
     }
 
     BackHandler(onBack = onBack)
@@ -2506,12 +2570,11 @@ private fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        if (!diagnosticsUnlocked) {
-                            versionTapCount += 1
-                            if (versionTapCount >= 20) {
-                                diagnosticsUnlocked = true
-                                versionTapCount = 0
-                            }
+                        versionTapCount += 1
+                        if (versionTapCount >= 20) {
+                            versionTapCount = 0
+                            shortVideoDiagnosticsStatus = null
+                            showDiagnosticsDialog = true
                         }
                     }
                     .padding(vertical = 10.dp),
@@ -2519,64 +2582,6 @@ private fun SettingsScreen(
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
             )
-
-            if (diagnosticsUnlocked) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color(0xFFDCE3D9))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        Text(
-                            "Диагностика коротких видео",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    shortVideoDiagnosticsStatus =
-                                        ShortVideoDiagnostics.exportToDownloads(context)
-                                            ?.let { "Лог сохранён: $it" }
-                                            ?: "Не удалось сохранить лог"
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Text("Сохранить лог")
-                            }
-                            TextButton(
-                                onClick = {
-                                    ShortVideoDiagnostics.clear(context)
-                                    shortVideoDiagnosticsStatus = "Лог очищен"
-                                }
-                            ) {
-                                Text("Очистить")
-                            }
-                        }
-
-                        shortVideoDiagnosticsStatus?.let { status ->
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                status,
-                                color = PauseMuted,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
             }
         }
 
