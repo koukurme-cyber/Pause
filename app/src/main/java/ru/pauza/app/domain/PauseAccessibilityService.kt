@@ -7,13 +7,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
+import android.view.TouchDelegate
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
@@ -563,6 +566,39 @@ class PauseAccessibilityService : AccessibilityService() {
             shortNoticeArmed = false
             lastShortNoticeShownAt = SystemClock.elapsedRealtime()
             dialog.show()
+
+            // Keep the OEM/system button completely native, but make it much
+            // easier to hit. The enlarged touch target is invisible and does
+            // not change the button's size, shape, colors or pressed state.
+            val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val decor = dialog.window?.decorView as? ViewGroup
+            if (positiveButton != null && decor != null) {
+                positiveButton.post {
+                    if (
+                        positiveButton.isAttachedToWindow &&
+                        positiveButton.width > 0 &&
+                        positiveButton.height > 0
+                    ) {
+                        val hitRect = Rect(0, 0, positiveButton.width, positiveButton.height)
+                        decor.offsetDescendantRectToMyCoords(positiveButton, hitRect)
+
+                        val extraHorizontal =
+                            (48f * resources.displayMetrics.density).toInt()
+                        val extraVertical =
+                            (24f * resources.displayMetrics.density).toInt()
+
+                        hitRect.left = (hitRect.left - extraHorizontal).coerceAtLeast(0)
+                        hitRect.right = (hitRect.right + extraHorizontal)
+                            .coerceAtMost(decor.width)
+                        hitRect.top = (hitRect.top - extraVertical).coerceAtLeast(0)
+                        hitRect.bottom = (hitRect.bottom + extraVertical)
+                            .coerceAtMost(decor.height)
+
+                        decor.touchDelegate = TouchDelegate(hitRect, positiveButton)
+                    }
+                }
+            }
+
             ShortVideoDiagnostics.log(
                 this,
                 "PauseShortVideo",
