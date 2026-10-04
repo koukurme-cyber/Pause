@@ -235,6 +235,7 @@ class ShortVideoRegressionTest {
         assertNotNull(button)
         assertEquals("OK", button.text.toString().uppercase())
         assertTrue(button.performClick())
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         assertNull(field("shortNoticeDialog"))
         enforce()
         assertNull(field("shortNoticeDialog"))
