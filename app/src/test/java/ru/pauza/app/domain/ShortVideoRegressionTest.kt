@@ -238,7 +238,9 @@ class ShortVideoRegressionTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         assertNull(field("shortNoticeDialog"))
         assertFalse(button.isEnabled)
-        assertFalse(button.performClick())
+        button.performClick()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertNull(field("shortNoticeDialog"))
         enforce()
         assertNull(field("shortNoticeDialog"))
     }
