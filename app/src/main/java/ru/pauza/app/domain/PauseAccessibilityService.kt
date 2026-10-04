@@ -502,6 +502,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun showShortVideoOverlay(ownerPackage: String) {
         if (shortNoticeDialog?.isShowing == true) return
 
+        var acknowledged = false
         val dialog = AlertDialog.Builder(
             this,
             android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
@@ -509,22 +510,34 @@ class PauseAccessibilityService : AccessibilityService() {
             .setTitle("Короткие видео заблокированы")
             .setMessage("Во время Паузы Shorts, Reels и короткие видео RUTUBE недоступны.")
             .setPositiveButton(android.R.string.ok) { currentDialog, _ ->
-                pendingShortVideoNotice = false
-                shortNoticeArmed = false
-                shortSafeSince = 0L
-                ShortVideoDiagnostics.log(
-                    this@PauseAccessibilityService,
-                    "PauseShortVideo",
-                    "notice acknowledged package=$ownerPackage"
-                )
-                shortNoticeDialog = null
-                shortNoticePackage = null
-                currentDialog.dismiss()
-                ShortVideoDiagnostics.log(
-                    this@PauseAccessibilityService,
-                    "PauseShortVideo",
-                    "notice removed"
-                )
+                if (!acknowledged) {
+                    acknowledged = true
+
+                    val visibleDialog = shortNoticeDialog
+                    visibleDialog
+                        ?.getButton(AlertDialog.BUTTON_POSITIVE)
+                        ?.isEnabled = false
+                    visibleDialog?.hide()
+
+                    pendingShortVideoNotice = false
+                    shortNoticeArmed = false
+                    shortSafeSince = 0L
+                    ShortVideoDiagnostics.log(
+                        this@PauseAccessibilityService,
+                        "PauseShortVideo",
+                        "notice acknowledged package=$ownerPackage"
+                    )
+
+                    shortNoticeDialog = null
+                    shortNoticePackage = null
+                    currentDialog.dismiss()
+
+                    ShortVideoDiagnostics.log(
+                        this@PauseAccessibilityService,
+                        "PauseShortVideo",
+                        "notice removed"
+                    )
+                }
             }
             .create()
 
