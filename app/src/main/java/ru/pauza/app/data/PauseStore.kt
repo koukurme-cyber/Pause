@@ -24,6 +24,21 @@ class PauseStore(context: Context) {
         get() = prefs.getStringSet(KEY_SELECTED, emptySet())?.toSet().orEmpty()
         set(value) { prefs.edit().putStringSet(KEY_SELECTED, value).apply() }
 
+    var manualSelectedPackages: Set<String>
+        get() {
+            if (prefs.contains(KEY_MANUAL_SELECTED)) {
+                return prefs.getStringSet(KEY_MANUAL_SELECTED, emptySet())?.toSet().orEmpty()
+            }
+
+            // Migration for users coming from versions before manual/set
+            // selections were stored separately. If no saved set is active,
+            // the current selection is the user's manual selection.
+            return if (activeSavedSetName == null) selectedPackages else emptySet()
+        }
+        set(value) {
+            prefs.edit().putStringSet(KEY_MANUAL_SELECTED, value).apply()
+        }
+
     var savedAppSets: List<SavedAppSet>
         get() = decodeSavedAppSets(prefs.getString(KEY_SAVED_APP_SETS, null))
         set(value) {
@@ -231,6 +246,7 @@ class PauseStore(context: Context) {
         const val MAX_SCHEDULE_DURATION_MINUTES = 30 * 24 * 60
 
         private const val KEY_SELECTED = "selected_packages"
+        private const val KEY_MANUAL_SELECTED = "manual_selected_packages"
         private const val KEY_SAVED_APP_SETS = "saved_app_sets"
         private const val KEY_ACTIVE_SAVED_SET_NAME = "active_saved_set_name"
         private const val KEY_HANDLED_SCHEDULE_OCCURRENCES = "handled_schedule_occurrences"
