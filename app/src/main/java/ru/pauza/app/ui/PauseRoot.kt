@@ -3222,13 +3222,13 @@ private fun HoldButton(
         Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .shadow(7.dp, RoundedCornerShape(19.dp), ambientColor = Color(0xFF184B34).copy(alpha = .18f))
-            .clip(RoundedCornerShape(19.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color(0xFF1E6842), Color(0xFF45B44D))
-                )
+            .shadow(
+                7.dp,
+                RoundedCornerShape(19.dp),
+                ambientColor = Color(0xFF184B34).copy(alpha = .18f)
             )
+            .clip(RoundedCornerShape(19.dp))
+            .background(Color(0xFF1E6842))
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -3237,27 +3237,23 @@ private fun HoldButton(
                         pressing = false
                     }
                 )
-            },
-        contentAlignment = Alignment.Center
+            }
     ) {
         if (pressing || holdProgress.value > 0f) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .fillMaxHeight()
                     .fillMaxWidth(holdProgress.value.coerceIn(0f, 1f))
-                    .height(5.dp)
-                    .background(Color.White.copy(alpha = 0.88f))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF45B44D),
+                                Color(0xFF63C85C),
+                            )
+                        )
+                    )
             )
         }
-
-        Text(
-            "Удерживайте 2 секунды, чтобы начать",
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
     }
 }
 
