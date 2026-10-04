@@ -196,6 +196,7 @@ fun PauseRoot(
     var alwaysApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
+    var manualSelected by remember { mutableStateOf(store.manualSelectedPackages) }
     var savedSets by remember { mutableStateOf(store.savedAppSets) }
     var activeSavedSetName by remember { mutableStateOf(store.activeSavedSetName) }
     var duration by remember { mutableStateOf(PauseDuration()) }
@@ -253,6 +254,12 @@ fun PauseRoot(
             store.selectedPackages = cleanedSelected
         }
 
+        val cleanedManualSelected = manualSelected.intersect(validPackages)
+        if (cleanedManualSelected != manualSelected) {
+            manualSelected = cleanedManualSelected
+            store.manualSelectedPackages = cleanedManualSelected
+        }
+
         val activeSavedSet = savedSets.firstOrNull {
             it.name == activeSavedSetName
         }
@@ -265,6 +272,8 @@ fun PauseRoot(
         ) {
             activeSavedSetName = null
             store.activeSavedSetName = null
+            selected = cleanedManualSelected
+            store.selectedPackages = cleanedManualSelected
         }
 
         loading = false
@@ -310,8 +319,11 @@ fun PauseRoot(
             activeSavedSetName = activeSavedSetName,
             duration = duration,
             onToggle = { pkg, enabled ->
-                selected = if (enabled) selected + pkg else selected - pkg
-                store.selectedPackages = selected
+                val nextSelected = if (enabled) selected + pkg else selected - pkg
+                selected = nextSelected
+                store.selectedPackages = nextSelected
+                manualSelected = nextSelected
+                store.manualSelectedPackages = nextSelected
                 activeSavedSetName = null
                 store.activeSavedSetName = null
             },
@@ -327,6 +339,12 @@ fun PauseRoot(
                 }
             },
             onClearSet = {
+                val installedPackages = apps.map { it.packageName }.toSet()
+                val restoredManual = manualSelected.intersect(installedPackages)
+                manualSelected = restoredManual
+                store.manualSelectedPackages = restoredManual
+                selected = restoredManual
+                store.selectedPackages = restoredManual
                 activeSavedSetName = null
                 store.activeSavedSetName = null
             },
@@ -379,6 +397,12 @@ fun PauseRoot(
                     savedSets = savedSets.toMutableList().also { it.removeAt(index) }
                     store.savedAppSets = savedSets
                     if (activeSavedSetName == removed.name) {
+                        val installedPackages = apps.map { it.packageName }.toSet()
+                        val restoredManual = manualSelected.intersect(installedPackages)
+                        manualSelected = restoredManual
+                        store.manualSelectedPackages = restoredManual
+                        selected = restoredManual
+                        store.selectedPackages = restoredManual
                         activeSavedSetName = null
                         store.activeSavedSetName = null
                     }
