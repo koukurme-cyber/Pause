@@ -530,6 +530,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
         dialog.setCancelable(false)
         dialog.setCanceledOnTouchOutside(false)
+        dialog.window?.setTitle("PauzaShortVideoNotice")
         dialog.window?.setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
         dialog.setOnDismissListener {
             if (shortNoticeDialog === dialog) {
