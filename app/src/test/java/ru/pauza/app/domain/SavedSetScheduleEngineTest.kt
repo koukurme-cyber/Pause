@@ -100,6 +100,33 @@ class SavedSetScheduleEngineTest {
     }
 
     @Test
+    fun savedSetSelectionDoesNotOverwriteManualSelection() {
+        store.selectedPackages = setOf("com.example.manual")
+        assertEquals(
+            setOf("com.example.manual"),
+            store.manualSelectedPackages
+        )
+
+        store.manualSelectedPackages = setOf("com.example.manual")
+        store.selectedPackages = setOf("com.example.fromset")
+        store.activeSavedSetName = "Работа"
+
+        assertEquals(
+            setOf("com.example.manual"),
+            store.manualSelectedPackages
+        )
+
+        val restoredManual = store.manualSelectedPackages
+        store.activeSavedSetName = null
+        store.selectedPackages = restoredManual
+
+        assertEquals(
+            setOf("com.example.manual"),
+            store.selectedPackages
+        )
+    }
+
+    @Test
     fun disabledOrWrongDayRuleDoesNotStart() {
         val now = Calendar.getInstance().apply {
             set(2026, Calendar.OCTOBER, 5, 8, 30, 0)
