@@ -517,7 +517,16 @@ class PauseAccessibilityService : AccessibilityService() {
                     "PauseShortVideo",
                     "notice acknowledged package=$ownerPackage"
                 )
+                if (shortNoticeDialog === dialog) {
+                    shortNoticeDialog = null
+                    shortNoticePackage = null
+                }
                 currentDialog.dismiss()
+                ShortVideoDiagnostics.log(
+                    this@PauseAccessibilityService,
+                    "PauseShortVideo",
+                    "notice removed"
+                )
             }
             .create()
 
