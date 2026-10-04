@@ -54,7 +54,7 @@ class PauseStore(context: Context) {
             .orEmpty()
         set(value) {
             prefs.edit()
-                .putStringSet(KEY_HANDLED_SCHEDULE_OCCURRENCES, value.takeLast(64).toSet())
+                .putStringSet(KEY_HANDLED_SCHEDULE_OCCURRENCES, value.toList().takeLast(64).toSet())
                 .apply()
         }
 
