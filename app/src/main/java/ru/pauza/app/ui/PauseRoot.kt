@@ -2,6 +2,8 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideInVertically
@@ -3187,14 +3189,27 @@ private fun HoldButton(
     onConfirmed: () -> Unit,
 ) {
     var pressing by remember { mutableStateOf(false) }
+    val holdProgress = remember { Animatable(0f) }
 
     LaunchedEffect(pressing) {
         if (pressing) {
-            delay(2000)
+            holdProgress.snapTo(0f)
+            holdProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 2000,
+                    easing = LinearEasing,
+                ),
+            )
             if (pressing) {
                 pressing = false
                 onConfirmed()
             }
+        } else if (holdProgress.value > 0f) {
+            holdProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 160),
+            )
         }
     }
 
@@ -3220,12 +3235,18 @@ private fun HoldButton(
             },
         contentAlignment = Alignment.Center
     ) {
+        if (pressing || holdProgress.value > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(holdProgress.value.coerceIn(0f, 1f))
+                    .height(5.dp)
+                    .background(Color.White.copy(alpha = 0.88f))
+            )
+        }
+
         Text(
-            if (pressing) {
-                "Продолжайте удерживать…"
-            } else {
-                "Удерживайте 2 секунды, чтобы начать"
-            },
+            "Удерживайте 2 секунды, чтобы начать",
             color = Color.White,
             fontWeight = FontWeight.SemiBold,
             fontSize = 16.sp,
