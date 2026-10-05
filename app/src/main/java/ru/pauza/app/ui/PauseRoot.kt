@@ -320,6 +320,7 @@ fun PauseRoot(
             savedSets = savedSets,
             activeSavedSetName = activeSavedSetName,
             duration = duration,
+            testModeEnabled = testModeEnabled,
             onToggle = { pkg, enabled ->
                 val nextSelected = if (enabled) selected + pkg else selected - pkg
                 selected = nextSelected
@@ -330,6 +331,10 @@ fun PauseRoot(
                 store.activeSavedSetName = null
             },
             onDuration = { duration = it },
+            onTestModeChanged = { enabled ->
+                testModeEnabled = enabled
+                store.testModeEnabled = enabled
+            },
             onApplySet = { index ->
                 val savedSet = savedSets.getOrNull(index)
                 if (savedSet != null) {
@@ -410,11 +415,6 @@ fun PauseRoot(
                     }
                 }
             },
-            testModeEnabled = testModeEnabled,
-            onTestModeChanged = { enabled ->
-                testModeEnabled = enabled
-                store.testModeEnabled = enabled
-            },
             blockShortVideos = blockShortVideos,
             onBlockShortVideosChanged = { enabled ->
                 blockShortVideos = enabled
@@ -492,7 +492,11 @@ fun PauseRoot(
 private fun BrandHeader(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    subtitle: String = "Только нужное",
+    onTitleTap: (() -> Unit)? = null,
 ) {
+    val titleTapInteraction = remember { MutableInteractionSource() }
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
@@ -508,12 +512,21 @@ private fun BrandHeader(
         Column {
             Text(
                 "Пауза",
+                modifier = if (onTitleTap != null) {
+                    Modifier.clickable(
+                        interactionSource = titleTapInteraction,
+                        indication = null,
+                        onClick = onTitleTap
+                    )
+                } else {
+                    Modifier
+                },
                 fontSize = if (compact) 27.sp else 34.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                "Только нужное",
+                subtitle,
                 fontSize = if (compact) 12.sp else 14.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.6.sp,
@@ -812,14 +825,17 @@ private fun SetupScreen(
     savedSets: List<PauseStore.SavedAppSet>,
     activeSavedSetName: String?,
     duration: PauseDuration,
+    testModeEnabled: Boolean,
     onToggle: (String, Boolean) -> Unit,
     onDuration: (PauseDuration) -> Unit,
+    onTestModeChanged: (Boolean) -> Unit,
     onApplySet: (Int) -> Unit,
     onClearSet: () -> Unit,
     onOpenSettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var hiddenModeTapCount by rememberSaveable { mutableIntStateOf(0) }
     val appListState = rememberLazyListState()
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
     val filteredApps = remember(allApps, searchQuery) {
@@ -865,7 +881,15 @@ private fun SetupScreen(
             ) {
                 BrandHeader(
                     modifier = Modifier.weight(1f),
-                    compact = true
+                    compact = true,
+                    subtitle = if (testModeEnabled) "Тестовый режим" else "Только нужное",
+                    onTitleTap = {
+                        hiddenModeTapCount += 1
+                        if (hiddenModeTapCount >= 20) {
+                            hiddenModeTapCount = 0
+                            onTestModeChanged(!testModeEnabled)
+                        }
+                    }
                 )
                 IconButton(
                     onClick = onOpenSettings,
@@ -2194,8 +2218,6 @@ private fun SettingsScreen(
         List<PauseStore.SavedSetSchedule>,
     ) -> Unit,
     onDeleteSet: (Int) -> Unit,
-    testModeEnabled: Boolean,
-    onTestModeChanged: (Boolean) -> Unit,
     blockShortVideos: Boolean,
     onBlockShortVideosChanged: (Boolean) -> Unit,
     startVibrationEnabled: Boolean,
@@ -2344,53 +2366,6 @@ private fun SettingsScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFFEFA).copy(alpha = .94f)
-                ),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color(0xFFDCE3D9))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Тестовый режим",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            "Позволяет досрочно завершить активную Паузу двадцатью касаниями по таймеру.",
-                            color = PauseMuted,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Switch(
-                        checked = testModeEnabled,
-                        onCheckedChange = onTestModeChanged,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                            checkedTrackColor = Color(0xFF36B34A),
-                            checkedBorderColor = Color(0xFF36B34A),
-                            uncheckedThumbColor = PauseMuted,
-                            uncheckedTrackColor = MaterialTheme.colorScheme.surface,
-                            uncheckedBorderColor = Color(0xFFCBD0C8),
-                            disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.62f),
-                            disabledCheckedTrackColor = Color(0xFF36B34A).copy(alpha = 0.42f),
-                            disabledCheckedBorderColor = Color(0xFF36B34A).copy(alpha = 0.32f),
-                        )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
