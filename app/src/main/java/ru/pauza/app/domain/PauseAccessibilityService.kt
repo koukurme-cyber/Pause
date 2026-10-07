@@ -145,10 +145,21 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Transient Android system surfaces (power menu, shade, Recents, etc.)
-        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
-        // Once the overlay closes, normal foreground enforcement resumes and any
-        // disallowed app selected from it is caught immediately.
+        val eventPackage = event?.packageName?.toString()
+
+        // Home and Recents are escape routes during an active Pause. They must
+        // always return to Pause, even if a launcher package accidentally appears
+        // in a saved set or the previous allowed app is still reported as focused.
+        if (eventPackage in launcherPackages || isSystemEscapeEvent(event)) {
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // Other transient Android system surfaces (power menu, notification shade,
+        // permission/system dialogs) remain untouched.
         if (hasActiveSystemUiSurface(event)) {
             hideShortNotice()
             hideOverlay()
@@ -156,6 +167,14 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+
+        if (foregroundPackage in launcherPackages) {
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
 
         if (
             store.blockShortVideos &&
@@ -649,6 +668,28 @@ class PauseAccessibilityService : AccessibilityService() {
             .any { it == SYSTEM_UI_PACKAGE }
     }
 
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        event ?: return false
+
+        val eventPackage = event.packageName?.toString().orEmpty()
+        val className = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        val sourceId =
+            event.source?.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+        val eventText =
+            event.text.joinToString(" ")
+                .lowercase(Locale.ROOT)
+
+        val recentsSignature =
+            listOf("recent", "recents", "overview", "quickstep", "taskview", "task_view")
+                .any { hint ->
+                    className.contains(hint) ||
+                        sourceId.contains(hint) ||
+                        eventText.contains(hint)
+                }
+
+        return eventPackage == SYSTEM_UI_PACKAGE && recentsSignature
+    }
+
     private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
         val currentApplication = windows.asSequence()
             .filter {
@@ -703,9 +744,9 @@ class PauseAccessibilityService : AccessibilityService() {
         return event?.packageName?.toString()
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
