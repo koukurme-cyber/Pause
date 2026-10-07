@@ -386,7 +386,6 @@ sleep 0.3
 
 echo "QA PASS: modal short-video notice acknowledged twice through real touch input" | tee "$ARTIFACT_DIR/summary.txt"
 adb logcat -d > "$ARTIFACT_DIR/logcat.txt" || true
-exit 0
 
 echo "Test 2: allowed Phone opens through the actual Pause overlay"
 adb shell input keyevent KEYCODE_HOME
@@ -418,31 +417,14 @@ fi
 adb shell input keyevent KEYCODE_HOME
 wait_for_pause_visible "Home after Back"
 
-echo "Test 5: Recents diagnostic on Android 15 Pixel launcher"
+echo "Test 5: Recents cannot escape active Pause"
 open_allowed_phone "Phone before Recents"
 adb shell input keyevent KEYCODE_APP_SWITCH
-sleep 0.8
+wait_for_pause_visible "Recents"
+snapshot "recents-blocked"
 FG="$(foreground_line)"
 echo "$FG" | tee "$ARTIFACT_DIR/test5-recents-result.txt"
-
-if pause_visible; then
-  echo "Recents result: Pause already resumed" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
-elif echo "$FG" | grep -Fq "$PHONE_PACKAGE"; then
-  echo "Recents result: allowed Phone remained resumed" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
-elif echo "$FG" | grep -Fq "com.google.android.apps.nexuslauncher"; then
-  echo "Recents result: Pixel launcher is hosting transient overview" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
-else
-  fail "Recents exposed an unexpected non-system app: $FG"
-fi
-
-adb shell input keyevent KEYCODE_HOME
-if pause_visible_stably; then
-  echo "Recents recovery: Pause resumed stably" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
-else
-  echo "Recents recovery warning: Pixel launcher kept foreground; restarting Pause for remaining regression checks" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
-  adb shell am start -W -n "$ACTIVITY" >/dev/null
-  wait_for_pause_visible "Recovery after emulator Recents"
-fi
+echo "Recents result: Pause resumed; overview is not accessible during active Pause" | tee -a "$ARTIFACT_DIR/test5-recents-result.txt"
 
 echo "Test 6: 30-cycle real Phone/Home stress"
 
