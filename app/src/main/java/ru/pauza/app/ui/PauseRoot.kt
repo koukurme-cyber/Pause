@@ -2456,7 +2456,7 @@ private fun SettingsScreen(
                             )
                             Spacer(Modifier.height(5.dp))
                             Text(
-                                "Эксперимент. Во время Паузы пытается закрывать YouTube Shorts, Instagram Reels и короткие видео RUTUBE, если само приложение оставлено доступным.",
+                                "Во время Паузы блокирует YouTube Shorts, Instagram Reels и короткие видео RUTUBE, если само приложение оставлено доступным.",
                                 color = PauseMuted,
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
