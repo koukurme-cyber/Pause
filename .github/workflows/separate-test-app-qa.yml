@@ -1,4 +1,4 @@
-name: Separate Test App QA Realme Home
+name: Separate Test App QA Realme Home Confirmed
 
 on:
   workflow_dispatch:
