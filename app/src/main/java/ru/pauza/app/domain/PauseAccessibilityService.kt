@@ -184,7 +184,12 @@ class PauseAccessibilityService : AccessibilityService() {
         // Pixel/Android transitions can briefly report the launcher through Usage
         // Access while no application window is focused (notably on Reels entry).
         // Require that weaker signal to persist before treating it as Home.
-        if (focusedApplication.isNullOrBlank()) {
+        if (shortNoticeDialog?.isShowing == true) {
+            // Our modal notice temporarily owns system focus. During that time
+            // Usage Access may keep reporting a stale launcher for several seconds.
+            // Never treat that weak signal as Home while the notice is visible.
+            clearLauncherCandidate()
+        } else if (focusedApplication.isNullOrBlank()) {
             val usageForeground = UsageAccessMonitor.foregroundPackage(this)
             val launcherCandidate = usageForeground?.takeIf { it in launcherPackages }
             if (launcherCandidate != null) {
