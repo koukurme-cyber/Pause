@@ -261,4 +261,54 @@ class ShortVideoRegressionTest {
         assertEquals(shown, field("lastShortNoticeShownAt"))
     }
 
+    private fun homeRoot(packageName: String = "test.launcher"): AccessibilityNodeInfo {
+        val info = ResolveInfo().apply {
+            activityInfo = ActivityInfo().apply {
+                this.packageName = packageName
+                name = "HomeActivity"
+            }
+        }
+        shadowOf(service.packageManager).addResolveInfoForIntent(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            info,
+        )
+        return node().also { `when`(it.packageName).thenReturn(packageName) }
+    }
+
+    @Test fun homeAlwaysReturnsToPauseEvenIfLauncherIsInSelectedPackages() {
+        val launcher = "test.launcher"
+        currentRoot = homeRoot(launcher)
+        PauseStore(service).selectedPackages = setOf(instagram, launcher)
+
+        enforce(launcher, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+
+        verify(service).startActivity(any(Intent::class.java))
+    }
+
+    @Test fun staleLauncherEventDoesNotKickOutFocusedAllowedApp() {
+        val launcher = "test.launcher"
+        homeRoot(launcher)
+        currentRoot = node()
+        PauseStore(service).selectedPackages = setOf(instagram)
+
+        enforce(launcher, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+
+        verify(service, never()).startActivity(any(Intent::class.java))
+    }
+
+    @Test fun recentsAlwaysReturnsToPause() {
+        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        event.packageName = "com.android.systemui"
+        event.className = "com.android.systemui.recents.RecentsActivity"
+        try {
+            PauseAccessibilityService::class.java
+                .getDeclaredMethod("enforceCurrentWindow", AccessibilityEvent::class.java)
+                .apply { isAccessible = true }.invoke(service, event)
+        } finally {
+            event.recycle()
+        }
+
+        verify(service).startActivity(any(Intent::class.java))
+    }
+
 }
