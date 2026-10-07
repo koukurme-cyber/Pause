@@ -8,7 +8,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "ru.pauza.app"
+        applicationId = "ru.pauza.app.test"
         minSdk = 26
         targetSdk = 36
         versionCode = 11
