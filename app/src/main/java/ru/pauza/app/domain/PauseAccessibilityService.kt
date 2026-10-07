@@ -186,12 +186,13 @@ class PauseAccessibilityService : AccessibilityService() {
         // Require that weaker signal to persist before treating it as Home.
         if (focusedApplication.isNullOrBlank()) {
             val usageForeground = UsageAccessMonitor.foregroundPackage(this)
-            if (usageForeground in launcherPackages) {
-                if (launcherEscapeConfirmed(usageForeground)) {
+            val launcherCandidate = usageForeground?.takeIf { it in launcherPackages }
+            if (launcherCandidate != null) {
+                if (launcherEscapeConfirmed(launcherCandidate)) {
                     ShortVideoDiagnostics.log(
                         this,
                         "PauseEscape",
-                        "home blocked after launcher confirmation=$usageForeground"
+                        "home blocked after launcher confirmation=$launcherCandidate"
                     )
                     resetShortVideoNavigation()
                     hideShortNotice()
