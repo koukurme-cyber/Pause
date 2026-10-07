@@ -146,11 +146,27 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val eventPackage = event?.packageName?.toString()
+        val focusedApplication = currentApplicationPackage()
 
-        // Home and Recents are escape routes during an active Pause. They must
-        // always return to Pause, even if a launcher package accidentally appears
-        // in a saved set or the previous allowed app is still reported as focused.
-        if (eventPackage in launcherPackages || isSystemEscapeEvent(event)) {
+        // Recents is never an allowed surface during an active Pause.
+        if (isSystemEscapeEvent(event)) {
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // Launcher events can be stale during in-app transitions (notably Reels).
+        // Treat Home as a real escape only when the launcher is actually the
+        // focused/active application, or no competing application window exists.
+        if (
+            focusedApplication in launcherPackages ||
+            (
+                eventPackage in launcherPackages &&
+                    (focusedApplication.isNullOrBlank() || focusedApplication in launcherPackages)
+            )
+        ) {
             resetShortVideoNavigation()
             hideShortNotice()
             hideOverlay()
@@ -690,8 +706,8 @@ class PauseAccessibilityService : AccessibilityService() {
         return eventPackage == SYSTEM_UI_PACKAGE && recentsSignature
     }
 
-    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val currentApplication = windows.asSequence()
+    private fun currentApplicationPackage(): String? =
+        windows.asSequence()
             .filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                     !it.isInPictureInPictureMode
@@ -703,6 +719,9 @@ class PauseAccessibilityService : AccessibilityService() {
             )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
+
+    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
+        val currentApplication = currentApplicationPackage()
             ?: shortNoticePackage?.takeIf { owner ->
                 // A focusable notice owns focus; its visible underlying app is
                 // still the foreground app even when Usage Access lags behind.
