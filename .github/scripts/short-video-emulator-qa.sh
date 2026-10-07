@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PKG="ru.pauza.app"
-ACTIVITY="$PKG/.MainActivity"
-ACCESSIBILITY_COMPONENT="$PKG/$PKG.domain.PauseAccessibilityService"
+PKG="ru.pauza.app.test"
+ACTIVITY="$PKG/ru.pauza.app.MainActivity"
+ACCESSIBILITY_COMPONENT="$PKG/ru.pauza.app.domain.PauseAccessibilityService"
 APK="app/build/outputs/apk/debug/app-debug.apk"
 FIXTURE_PKG="com.instagram.android"
 FIXTURE_ACTIVITY="$FIXTURE_PKG/.FixtureActivity"
@@ -26,7 +26,7 @@ pause_visible() {
   # and create a false positive even while Phone is genuinely foreground.
   adb shell dumpsys activity activities 2>/dev/null |
     grep -E -m1 "topResumedActivity=|ResumedActivity:" |
-    grep -Fq "ru.pauza.app/.MainActivity"
+    grep -Fq "ru.pauza.app.test/ru.pauza.app.MainActivity"
 }
 
 foreground_line() {
