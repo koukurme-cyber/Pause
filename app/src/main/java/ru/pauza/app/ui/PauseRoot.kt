@@ -2,6 +2,8 @@ package ru.pauza.app.ui
 
 import android.app.Activity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideInVertically
@@ -3187,14 +3189,27 @@ private fun HoldButton(
     onConfirmed: () -> Unit,
 ) {
     var pressing by remember { mutableStateOf(false) }
+    val holdProgress = remember { Animatable(0f) }
 
     LaunchedEffect(pressing) {
         if (pressing) {
-            delay(2000)
+            holdProgress.snapTo(0f)
+            holdProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 2000,
+                    easing = LinearEasing,
+                ),
+            )
             if (pressing) {
                 pressing = false
                 onConfirmed()
             }
+        } else if (holdProgress.value > 0f) {
+            holdProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 160),
+            )
         }
     }
 
@@ -3202,13 +3217,13 @@ private fun HoldButton(
         Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .shadow(7.dp, RoundedCornerShape(19.dp), ambientColor = Color(0xFF184B34).copy(alpha = .18f))
-            .clip(RoundedCornerShape(19.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color(0xFF1E6842), Color(0xFF45B44D))
-                )
+            .shadow(
+                7.dp,
+                RoundedCornerShape(19.dp),
+                ambientColor = Color(0xFF184B34).copy(alpha = .18f)
             )
+            .clip(RoundedCornerShape(19.dp))
+            .background(Color(0xFF1E6842))
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -3217,21 +3232,23 @@ private fun HoldButton(
                         pressing = false
                     }
                 )
-            },
-        contentAlignment = Alignment.Center
+            }
     ) {
-        Text(
-            if (pressing) {
-                "Продолжайте удерживать…"
-            } else {
-                "Удерживайте 2 секунды, чтобы начать"
-            },
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        if (pressing || holdProgress.value > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(holdProgress.value.coerceIn(0f, 1f))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF45B44D),
+                                Color(0xFF63C85C),
+                            )
+                        )
+                    )
+            )
+        }
     }
 }
 
