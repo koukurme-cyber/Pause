@@ -3231,6 +3231,17 @@ private fun HoldButton(
                     )
             )
         }
+
+        Text(
+            "Удерживайте 2 секунды, чтобы начать",
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 16.dp)
+        )
     }
 }
 
