@@ -386,7 +386,6 @@ sleep 0.3
 
 echo "QA PASS: modal short-video notice acknowledged twice through real touch input" | tee "$ARTIFACT_DIR/summary.txt"
 adb logcat -d > "$ARTIFACT_DIR/logcat.txt" || true
-exit 0
 
 echo "Test 2: allowed Phone opens through the actual Pause overlay"
 adb shell input keyevent KEYCODE_HOME
