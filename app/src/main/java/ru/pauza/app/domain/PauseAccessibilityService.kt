@@ -48,6 +48,8 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
+    private var launcherCandidatePackage: String? = null
+    private var launcherCandidateSince = 0L
 
     private var shortVideoNavigating = false
     private var shortVideoBlockedPackage: String? = null
@@ -150,6 +152,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
         // Recents is an escape route during an active Pause and must never remain open.
         if (isSystemEscapeEvent(event)) {
+            clearLauncherCandidate()
             ShortVideoDiagnostics.log(
                 this,
                 "PauseEscape",
@@ -162,26 +165,43 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Some OEMs (including Realme/Oplus) report a SystemUI transition before
-        // Home settles. Block Home only when the launcher is really the active
-        // application, so stale launcher events inside Instagram do not cause a kick-out.
-        if (
-            focusedApplication in launcherPackages ||
-            (
-                eventPackage in launcherPackages &&
-                    (focusedApplication.isNullOrBlank() || focusedApplication in launcherPackages)
-            )
-        ) {
+        // A launcher that owns the focused application window is a real Home escape.
+        // This is the strongest signal and can be blocked immediately.
+        if (focusedApplication in launcherPackages) {
+            clearLauncherCandidate()
             ShortVideoDiagnostics.log(
                 this,
                 "PauseEscape",
-                "home blocked eventPackage=$eventPackage focused=$focusedApplication"
+                "home blocked from focused launcher=$focusedApplication eventPackage=$eventPackage"
             )
             resetShortVideoNavigation()
             hideShortNotice()
             hideOverlay()
             returnToPause(force = true)
             return
+        }
+
+        // Pixel/Android transitions can briefly report the launcher through Usage
+        // Access while no application window is focused (notably on Reels entry).
+        // Require that weaker signal to persist before treating it as Home.
+        if (focusedApplication.isNullOrBlank()) {
+            val usageForeground = UsageAccessMonitor.foregroundPackage(this)
+            if (usageForeground in launcherPackages) {
+                if (launcherEscapeConfirmed(usageForeground)) {
+                    ShortVideoDiagnostics.log(
+                        this,
+                        "PauseEscape",
+                        "home blocked after launcher confirmation=$usageForeground"
+                    )
+                    resetShortVideoNavigation()
+                    hideShortNotice()
+                    hideOverlay()
+                    returnToPause(force = true)
+                }
+                return
+            }
+        } else {
+            clearLauncherCandidate()
         }
 
         // Other transient Android system surfaces (power menu, notification shade,
@@ -195,16 +215,20 @@ class PauseAccessibilityService : AccessibilityService() {
         val foregroundPackage = resolveForegroundPackage(event) ?: return
 
         if (foregroundPackage in launcherPackages) {
-            ShortVideoDiagnostics.log(
-                this,
-                "PauseEscape",
-                "launcher foreground blocked package=$foregroundPackage"
-            )
-            resetShortVideoNavigation()
-            hideShortNotice()
-            hideOverlay()
-            returnToPause(force = true)
+            if (launcherEscapeConfirmed(foregroundPackage)) {
+                ShortVideoDiagnostics.log(
+                    this,
+                    "PauseEscape",
+                    "launcher foreground blocked package=$foregroundPackage"
+                )
+                resetShortVideoNavigation()
+                hideShortNotice()
+                hideOverlay()
+                returnToPause(force = true)
+            }
             return
+        } else {
+            clearLauncherCandidate()
         }
 
         if (
@@ -713,6 +737,21 @@ class PauseAccessibilityService : AccessibilityService() {
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
 
+    private fun launcherEscapeConfirmed(candidate: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (launcherCandidatePackage != candidate) {
+            launcherCandidatePackage = candidate
+            launcherCandidateSince = now
+            return false
+        }
+        return now - launcherCandidateSince >= HOME_CONFIRM_MS
+    }
+
+    private fun clearLauncherCandidate() {
+        launcherCandidatePackage = null
+        launcherCandidateSince = 0L
+    }
+
     private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
         if (event?.packageName?.toString() != SYSTEM_UI_PACKAGE) return false
 
@@ -879,6 +918,7 @@ class PauseAccessibilityService : AccessibilityService() {
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 180L
+        private const val HOME_CONFIRM_MS = 450L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
 
