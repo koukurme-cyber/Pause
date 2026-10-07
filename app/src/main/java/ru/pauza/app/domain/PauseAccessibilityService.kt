@@ -145,10 +145,47 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Transient Android system surfaces (power menu, shade, Recents, etc.)
-        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
-        // Once the overlay closes, normal foreground enforcement resumes and any
-        // disallowed app selected from it is caught immediately.
+        val eventPackage = event?.packageName?.toString()
+        val focusedApplication = currentApplicationPackage()
+
+        // Recents is an escape route during an active Pause and must never remain open.
+        if (isSystemEscapeEvent(event)) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseEscape",
+                "recents blocked eventPackage=$eventPackage focused=$focusedApplication"
+            )
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // Some OEMs (including Realme/Oplus) report a SystemUI transition before
+        // Home settles. Block Home only when the launcher is really the active
+        // application, so stale launcher events inside Instagram do not cause a kick-out.
+        if (
+            focusedApplication in launcherPackages ||
+            (
+                eventPackage in launcherPackages &&
+                    (focusedApplication.isNullOrBlank() || focusedApplication in launcherPackages)
+            )
+        ) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseEscape",
+                "home blocked eventPackage=$eventPackage focused=$focusedApplication"
+            )
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // Other transient Android system surfaces (power menu, notification shade,
+        // permission/system dialogs) remain available.
         if (hasActiveSystemUiSurface(event)) {
             hideShortNotice()
             hideOverlay()
@@ -156,6 +193,19 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+
+        if (foregroundPackage in launcherPackages) {
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseEscape",
+                "launcher foreground blocked package=$foregroundPackage"
+            )
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
 
         if (
             store.blockShortVideos &&
@@ -649,8 +699,8 @@ class PauseAccessibilityService : AccessibilityService() {
             .any { it == SYSTEM_UI_PACKAGE }
     }
 
-    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val currentApplication = windows.asSequence()
+    private fun currentApplicationPackage(): String? =
+        windows.asSequence()
             .filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                     !it.isInPictureInPictureMode
@@ -662,6 +712,33 @@ class PauseAccessibilityService : AccessibilityService() {
             )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
+
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        if (event?.packageName?.toString() != SYSTEM_UI_PACKAGE) return false
+
+        val signature = buildString {
+            append(event.className?.toString().orEmpty())
+            append(' ')
+            append(event.contentDescription?.toString().orEmpty())
+            append(' ')
+            event.text.forEach {
+                append(it?.toString().orEmpty())
+                append(' ')
+            }
+        }.lowercase()
+
+        return listOf(
+            "recent",
+            "recents",
+            "overview",
+            "quickstep",
+            "taskview",
+            "task_view",
+        ).any(signature::contains)
+    }
+
+    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
+        val currentApplication = currentApplicationPackage()
             ?: shortNoticePackage?.takeIf { owner ->
                 // A focusable notice owns focus; its visible underlying app is
                 // still the foreground app even when Usage Access lags behind.
@@ -703,9 +780,9 @@ class PauseAccessibilityService : AccessibilityService() {
         return event?.packageName?.toString()
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
