@@ -330,9 +330,10 @@ class ShortVideoRegressionTest {
             `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
             `when`(window.root).thenReturn(launcherRoot)
         }
+        val allowedRoot = node()
         val allowedWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
             `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
-            `when`(window.root).thenReturn(node())
+            `when`(window.root).thenReturn(allowedRoot)
         }
         val systemRoot = mock(AccessibilityNodeInfo::class.java).also {
             `when`(it.packageName).thenReturn("com.android.systemui")
