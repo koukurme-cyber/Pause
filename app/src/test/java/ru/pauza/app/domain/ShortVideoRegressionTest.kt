@@ -299,6 +299,58 @@ class ShortVideoRegressionTest {
         verify(service, never()).startActivity(any(Intent::class.java))
     }
 
+    @Test fun realmeHomeBehindFocusedSystemUiIsBlockedAfterConfirmation() {
+        val launcherRoot = homeRoot()
+        val launcherWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
+            `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
+            `when`(window.root).thenReturn(launcherRoot)
+        }
+        val systemRoot = mock(AccessibilityNodeInfo::class.java).also {
+            `when`(it.packageName).thenReturn("com.android.systemui")
+        }
+        val systemWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
+            `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_SYSTEM)
+            `when`(window.isFocused).thenReturn(true)
+            `when`(window.root).thenReturn(systemRoot)
+        }
+        doReturn(listOf(systemWindow, launcherWindow)).`when`(service).windows
+        doReturn(systemRoot).`when`(service).rootInActiveWindow
+
+        enforce("com.android.systemui", AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        verify(service, never()).startActivity(any(Intent::class.java))
+
+        advance(500)
+        enforce("com.android.systemui", AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        verify(service).startActivity(any(Intent::class.java))
+    }
+
+    @Test fun systemUiOverVisibleAllowedAppDoesNotMisidentifyHome() {
+        val launcherRoot = homeRoot()
+        val launcherWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
+            `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
+            `when`(window.root).thenReturn(launcherRoot)
+        }
+        val allowedWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
+            `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_APPLICATION)
+            `when`(window.root).thenReturn(node())
+        }
+        val systemRoot = mock(AccessibilityNodeInfo::class.java).also {
+            `when`(it.packageName).thenReturn("com.android.systemui")
+        }
+        val systemWindow = mock(AccessibilityWindowInfo::class.java).also { window ->
+            `when`(window.type).thenReturn(AccessibilityWindowInfo.TYPE_SYSTEM)
+            `when`(window.isFocused).thenReturn(true)
+            `when`(window.root).thenReturn(systemRoot)
+        }
+        doReturn(listOf(systemWindow, launcherWindow, allowedWindow)).`when`(service).windows
+        doReturn(systemRoot).`when`(service).rootInActiveWindow
+
+        enforce("com.android.systemui", AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        advance(600)
+        enforce("com.android.systemui", AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        verify(service, never()).startActivity(any(Intent::class.java))
+    }
+
     @Test fun recentsSystemUiEventAlwaysReturnsToPause() {
         val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
         event.packageName = "com.android.systemui"

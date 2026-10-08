@@ -87,6 +87,11 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         ShortVideoDiagnostics.log(this, "PauseShortVideo", "Accessibility service connected")
+        ShortVideoDiagnostics.log(
+            this,
+            "PauseEscape",
+            "homePackages=${launcherPackages.joinToString()} usageAccess=${UsageAccessMonitor.isGranted(this)}"
+        )
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -208,6 +213,25 @@ class PauseAccessibilityService : AccessibilityService() {
             }
         } else {
             clearLauncherCandidate()
+        }
+
+        // On some OEM launchers, SystemUI retains focus after Home is pressed.
+        // The visible launcher under that surface is a Home candidate only when
+        // no other app window is visible. Confirm the weak signal across polls.
+        if (focusedApplication.isNullOrBlank() || focusedApplication == SYSTEM_UI_PACKAGE) {
+            val visibleLauncher = visibleLauncherWithoutOtherApp()
+            if (visibleLauncher != null && launcherEscapeConfirmed(visibleLauncher)) {
+                ShortVideoDiagnostics.log(
+                    this,
+                    "PauseEscape",
+                    "home blocked behind SystemUI launcher=$visibleLauncher eventPackage=$eventPackage"
+                )
+                resetShortVideoNavigation()
+                hideShortNotice()
+                hideOverlay()
+                returnToPause(force = true)
+                return
+            }
         }
 
         // Other transient Android system surfaces (power menu, notification shade,
@@ -742,6 +766,26 @@ class PauseAccessibilityService : AccessibilityService() {
             )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
+
+    private fun visibleLauncherWithoutOtherApp(): String? {
+        val visibleAppPackages = windows.asSequence()
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    !it.isInPictureInPictureMode
+            }
+            .mapNotNull { window ->
+                window.root?.takeIf { it.isVisibleToUser }?.packageName?.toString()
+            }
+            .toList()
+
+        if (visibleAppPackages.any {
+                it !in launcherPackages && it != packageName && it != SYSTEM_UI_PACKAGE
+            }
+        ) {
+            return null
+        }
+        return visibleAppPackages.firstOrNull { it in launcherPackages }
+    }
 
     private fun launcherEscapeConfirmed(candidate: String): Boolean {
         val now = SystemClock.elapsedRealtime()

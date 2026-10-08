@@ -1,12 +1,14 @@
-name: Separate Test App QA Realme Home Confirmed 3
+name: Separate Test App QA Realme SystemUI Home 4
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - experimental-tap-testmode-0.8.66
+      - experimental-tap-testmode-0.8.67
     paths:
       - ".github/workflows/separate-test-app-qa.yml"
+      - "app/src/main/java/ru/pauza/app/domain/PauseAccessibilityService.kt"
+      - "app/src/test/java/ru/pauza/app/domain/ShortVideoRegressionTest.kt"
 
 permissions:
   contents: read
@@ -40,8 +42,8 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66-test"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 117/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67-test"/' app/build.gradle.kts
 
       - name: Run short-video regression tests
         run: gradle --no-daemon :app:testDebugUnitTest --tests "ru.pauza.app.domain.ShortVideoRegressionTest" --tests "ru.pauza.app.domain.SavedSetScheduleEngineTest" --stacktrace
@@ -52,7 +54,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.66-test-debug
+          name: Pauza-0.8.67-test-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -86,8 +88,8 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66-test"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 117/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67-test"/' app/build.gradle.kts
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug :qa-shortvideo-fixture:assembleDebug --stacktrace
@@ -113,7 +115,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pauza-0.8.66-test-emulator-qa
+          name: pauza-0.8.67-test-emulator-qa
           path: qa-artifacts/
           if-no-files-found: warn
           retention-days: 14
@@ -148,21 +150,21 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66-test"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 117/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67-test"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
 
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.66-test.apk
-          test -s Pauza-0.8.66-test.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.67-test.apk
+          test -s Pauza-0.8.67-test.apk
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.66-test
-          path: Pauza-0.8.66-test.apk
+          name: Pauza-0.8.67-test
+          path: Pauza-0.8.67-test.apk
           if-no-files-found: error
           retention-days: 14
