@@ -218,7 +218,10 @@ class PauseAccessibilityService : AccessibilityService() {
         // On some OEM launchers, SystemUI retains focus after Home is pressed.
         // The visible launcher under that surface is a Home candidate only when
         // no other app window is visible. Confirm the weak signal across polls.
-        if (focusedApplication.isNullOrBlank() || focusedApplication == SYSTEM_UI_PACKAGE) {
+        if (
+            shortNoticeDialog?.isShowing != true &&
+            (focusedApplication.isNullOrBlank() || focusedApplication == SYSTEM_UI_PACKAGE)
+        ) {
             val visibleLauncher = visibleLauncherWithoutOtherApp()
             if (visibleLauncher != null && launcherEscapeConfirmed(visibleLauncher)) {
                 ShortVideoDiagnostics.log(
