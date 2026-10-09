@@ -242,7 +242,6 @@ cat > /tmp/pause_store.xml <<EOF
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <set name="selected_packages">
-        <string>com.android.settings</string>
         <string>com.instagram.android</string>
     </set>
     <long name="session_end_epoch_ms" value="$END_MS" />
@@ -343,6 +342,12 @@ echo "=== end diagnostics ==="
 
 wait_for_pause_visible "initial launcher protection"
 snapshot "initial"
+
+echo "Test 0: a non-whitelisted app must be blocked"
+adb shell am start -W -a android.settings.SETTINGS >/dev/null
+wait_for_pause_visible "disallowed Android Settings"
+snapshot "blocked-disallowed-settings"
+echo "QA PASS: non-whitelisted Settings was returned to Pause" | tee -a "$ARTIFACT_DIR/summary.txt"
 
 echo "Test 1: real Accessibility detection exits an Instagram-like Reels player"
 adb logcat -c
