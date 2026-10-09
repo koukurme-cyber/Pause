@@ -22,6 +22,7 @@ import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -81,6 +82,7 @@ import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
+import ru.pauza.app.domain.PauseAccessibilityService
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.domain.NotificationSilencer
@@ -448,18 +450,27 @@ fun PauseRoot(
             onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
-                sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
-                store.selectedPackages = selected
-                store.sessionEndEpochMs = sessionEnd
-                blocker.start(
-                    selected + appsRepository.alwaysAllowedPackages(),
-                    sessionEnd
-                )
-                if (startVibrationEnabled) {
-                    vibratePauseStart(context)
+                if (!PauseAccessibilityService.isServiceResponding()) {
+                    ShortVideoDiagnostics.log(context, "PauseHealth", "start denied: accessibility service is not responding")
+                    Toast.makeText(
+                        context,
+                        "Блокировка недоступна. Перезапустите службу «Пауза» в специальных возможностях.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
+                    store.selectedPackages = selected
+                    store.sessionEndEpochMs = sessionEnd
+                    blocker.start(
+                        selected + appsRepository.alwaysAllowedPackages(),
+                        sessionEnd
+                    )
+                    if (startVibrationEnabled) {
+                        vibratePauseStart(context)
+                    }
+                    NotificationSilencer.applyForPause(context, store)
+                    screen = Screen.ACTIVE
                 }
-                NotificationSilencer.applyForPause(context, store)
-                screen = Screen.ACTIVE
             }
         )
 
