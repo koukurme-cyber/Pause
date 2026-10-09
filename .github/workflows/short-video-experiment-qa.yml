@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - stable-0.8.66
+      - stable-0.8.67
     paths:
       - "app/**"
       - ".github/scripts/short-video-emulator-qa.sh"
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pauza-stable-0.8.66
+  group: pauza-stable-0.8.67
   cancel-in-progress: true
 
 jobs:
@@ -46,8 +46,8 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 118/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67"/' app/build.gradle.kts
 
       - name: Run short-video regression tests
         run: gradle --no-daemon :app:testDebugUnitTest --tests "ru.pauza.app.domain.ShortVideoRegressionTest" --tests "ru.pauza.app.domain.SavedSetScheduleEngineTest" --stacktrace
@@ -58,7 +58,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.66-debug
+          name: Pauza-0.8.67-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -92,8 +92,8 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 118/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67"/' app/build.gradle.kts
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug :qa-shortvideo-fixture:assembleDebug --stacktrace
@@ -119,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pauza-0.8.66-emulator-qa
+          name: pauza-0.8.67-emulator-qa
           path: qa-artifacts/
           if-no-files-found: warn
           retention-days: 14
@@ -154,21 +154,21 @@ jobs:
 
       - name: Set experimental version
         run: |
-          sed -i 's/versionCode = 11/versionCode = 116/' app/build.gradle.kts
-          sed -i 's/versionName = "0.6.3"/versionName = "0.8.66"/' app/build.gradle.kts
+          sed -i 's/versionCode = 11/versionCode = 118/' app/build.gradle.kts
+          sed -i 's/versionName = "0.6.3"/versionName = "0.8.67"/' app/build.gradle.kts
 
       - name: Build release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
 
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.66.apk
-          test -s Pauza-0.8.66.apk
+          cp app/build/outputs/apk/release/app-release.apk Pauza-0.8.67.apk
+          test -s Pauza-0.8.67.apk
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pauza-0.8.66
-          path: Pauza-0.8.66.apk
+          name: Pauza-0.8.67
+          path: Pauza-0.8.67.apk
           if-no-files-found: error
           retention-days: 14
