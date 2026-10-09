@@ -81,6 +81,7 @@ import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import ru.pauza.app.domain.AccessibilityPauseBlocker
+import ru.pauza.app.domain.PauseAccessibilityService
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
 import ru.pauza.app.domain.NotificationSilencer
@@ -121,6 +122,9 @@ fun PauseRoot(
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
+    var serviceUnresponsive by remember { mutableStateOf(false) }
+    var serviceFailureSince by remember { mutableLongStateOf(0L) }
+    var showServiceWarning by remember { mutableStateOf(false) }
     var usageAccessEnabled by remember {
         mutableStateOf(UsageAccessMonitor.isGranted(context))
     }
@@ -139,7 +143,24 @@ fun PauseRoot(
 
     LaunchedEffect(Unit) {
         while (true) {
-            accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
+            val enabled = AccessibilityPauseBlocker.isEnabled(context)
+            accessibilityEnabled = enabled
+            val responding = PauseAccessibilityService.isServiceResponding()
+            val nowElapsed = SystemClock.elapsedRealtime()
+            if (enabled && !responding) {
+                if (serviceFailureSince == 0L) serviceFailureSince = nowElapsed
+                if (!serviceUnresponsive && nowElapsed - serviceFailureSince >= 4_000L) {
+                    serviceUnresponsive = true
+                    ShortVideoDiagnostics.log(context, "PauseHealth", "Accessibility enabled but service heartbeat missing")
+                }
+            } else {
+                if (serviceUnresponsive) {
+                    ShortVideoDiagnostics.log(context, "PauseHealth", if (enabled) "Accessibility service recovered" else "Accessibility disabled")
+                }
+                serviceFailureSince = 0L
+                serviceUnresponsive = false
+                if (responding) showServiceWarning = false
+            }
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             notificationPolicyAccessGranted = NotificationSilencer.isPolicyAccessGranted(context)
@@ -448,6 +469,10 @@ fun PauseRoot(
             onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
+                if (!AccessibilityPauseBlocker.isEnabled(context) || !PauseAccessibilityService.isServiceResponding()) {
+                    ShortVideoDiagnostics.log(context, "PauseHealth", "Pause start denied: accessibility service is unavailable")
+                    showServiceWarning = true
+                } else {
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
@@ -460,6 +485,7 @@ fun PauseRoot(
                 }
                 NotificationSilencer.applyForPause(context, store)
                 screen = Screen.ACTIVE
+                }
             }
         )
 
@@ -469,6 +495,8 @@ fun PauseRoot(
             selected = selected,
             sessionEnd = sessionEnd,
             testModeEnabled = testModeEnabled,
+            serviceUnresponsive = serviceUnresponsive,
+            onRestoreService = { AccessibilityPauseBlocker.openSettings(context) },
             onLaunch = appsRepository::launch,
             onFinished = {
                 blocker.stop()
@@ -483,6 +511,23 @@ fun PauseRoot(
                 store.clearSession()
                 sessionEnd = 0L
                 screen = Screen.SETUP
+            }
+        )
+    }
+
+    if (showServiceWarning && screen == Screen.REVIEW) {
+        AlertDialog(
+            onDismissRequest = { showServiceWarning = false },
+            title = { Text("Блокировка недоступна") },
+            text = { Text("Служба «Пауза» не отвечает. Проверьте её в специальных возможностях Android, затем вернитесь в приложение.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showServiceWarning = false
+                    AccessibilityPauseBlocker.openSettings(context)
+                }) { Text("Открыть настройки") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showServiceWarning = false }) { Text("Закрыть") }
             }
         )
     }
@@ -2765,6 +2810,8 @@ private fun ActiveScreen(
     selected: Set<String>,
     sessionEnd: Long,
     testModeEnabled: Boolean,
+    serviceUnresponsive: Boolean,
+    onRestoreService: () -> Unit,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
     onTapExit: () -> Unit,
@@ -2851,6 +2898,23 @@ private fun ActiveScreen(
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
             )
+
+            if (serviceUnresponsive) {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF0D8)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Служба блокировки не отвечает", fontWeight = FontWeight.SemiBold)
+                        Text("Блокировка может не действовать. Проверьте специальные возможности Android.", fontSize = 13.sp)
+                        TextButton(onClick = onRestoreService) {
+                            Text("Открыть настройки")
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(24.dp))
 
