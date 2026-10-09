@@ -74,6 +74,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     private val watchdog = object : Runnable {
         override fun run() {
+            // Liveness signal only: proves the service main loop is executing.
+            serviceHeartbeatAtMs = SystemClock.elapsedRealtime()
             try {
                 enforceSafely()
             } finally {
@@ -84,6 +86,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        serviceHeartbeatAtMs = SystemClock.elapsedRealtime()
         ShortVideoDiagnostics.log(this, "PauseShortVideo", "Accessibility service connected")
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
@@ -792,7 +795,15 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        serviceHeartbeatAtMs = 0L
+        handler.removeCallbacks(watchdog)
+        ShortVideoDiagnostics.log(this, "PauseHealth", "Accessibility service unbound")
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        serviceHeartbeatAtMs = 0L
         handler.removeCallbacks(watchdog)
         hideShortNotice()
         hideOverlay()
@@ -800,6 +811,13 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        @Volatile private var serviceHeartbeatAtMs = 0L
+
+        fun isServiceResponding(): Boolean {
+            val last = serviceHeartbeatAtMs
+            return last > 0L && SystemClock.elapsedRealtime() - last < 2_500L
+        }
+
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 180L
         private const val WATCHDOG_INTERVAL_MS = 200L
