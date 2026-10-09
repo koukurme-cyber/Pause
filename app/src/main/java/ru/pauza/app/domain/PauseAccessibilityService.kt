@@ -48,6 +48,8 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
+    private var launcherCandidatePackage: String? = null
+    private var launcherCandidateSince = 0L
 
     private var shortVideoNavigating = false
     private var shortVideoBlockedPackage: String? = null
@@ -85,6 +87,11 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         ShortVideoDiagnostics.log(this, "PauseShortVideo", "Accessibility service connected")
+        ShortVideoDiagnostics.log(
+            this,
+            "PauseEscape",
+            "homePackages=${launcherPackages.joinToString()} usageAccess=${UsageAccessMonitor.isGranted(this)}"
+        )
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -145,10 +152,93 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Transient Android system surfaces (power menu, shade, Recents, etc.)
-        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
-        // Once the overlay closes, normal foreground enforcement resumes and any
-        // disallowed app selected from it is caught immediately.
+        val eventPackage = event?.packageName?.toString()
+        val focusedApplication = currentApplicationPackage()
+
+        // Recents is an escape route during an active Pause and must never remain open.
+        if (isSystemEscapeEvent(event)) {
+            clearLauncherCandidate()
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseEscape",
+                "recents blocked eventPackage=$eventPackage focused=$focusedApplication"
+            )
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // A launcher that owns the focused application window is a real Home escape.
+        // This is the strongest signal and can be blocked immediately.
+        if (focusedApplication in launcherPackages) {
+            clearLauncherCandidate()
+            ShortVideoDiagnostics.log(
+                this,
+                "PauseEscape",
+                "home blocked from focused launcher=$focusedApplication eventPackage=$eventPackage"
+            )
+            resetShortVideoNavigation()
+            hideShortNotice()
+            hideOverlay()
+            returnToPause(force = true)
+            return
+        }
+
+        // Pixel/Android transitions can briefly report the launcher through Usage
+        // Access while no application window is focused (notably on Reels entry).
+        // Require that weaker signal to persist before treating it as Home.
+        if (shortNoticeDialog?.isShowing == true) {
+            // Our modal notice temporarily owns system focus. During that time
+            // Usage Access may keep reporting a stale launcher for several seconds.
+            // Never treat that weak signal as Home while the notice is visible.
+            clearLauncherCandidate()
+        } else if (focusedApplication.isNullOrBlank()) {
+            val usageForeground = UsageAccessMonitor.foregroundPackage(this)
+            val launcherCandidate = usageForeground?.takeIf { it in launcherPackages }
+            if (launcherCandidate != null) {
+                if (launcherEscapeConfirmed(launcherCandidate)) {
+                    ShortVideoDiagnostics.log(
+                        this,
+                        "PauseEscape",
+                        "home blocked after launcher confirmation=$launcherCandidate"
+                    )
+                    resetShortVideoNavigation()
+                    hideShortNotice()
+                    hideOverlay()
+                    returnToPause(force = true)
+                }
+                return
+            }
+        } else {
+            clearLauncherCandidate()
+        }
+
+        // On some OEM launchers, SystemUI retains focus after Home is pressed.
+        // The visible launcher under that surface is a Home candidate only when
+        // no other app window is visible. Confirm the weak signal across polls.
+        if (
+            shortNoticeDialog?.isShowing != true &&
+            (focusedApplication.isNullOrBlank() || focusedApplication == SYSTEM_UI_PACKAGE)
+        ) {
+            val visibleLauncher = visibleLauncherWithoutOtherApp()
+            if (visibleLauncher != null && launcherEscapeConfirmed(visibleLauncher)) {
+                ShortVideoDiagnostics.log(
+                    this,
+                    "PauseEscape",
+                    "home blocked behind SystemUI launcher=$visibleLauncher eventPackage=$eventPackage"
+                )
+                resetShortVideoNavigation()
+                hideShortNotice()
+                hideOverlay()
+                returnToPause(force = true)
+                return
+            }
+        }
+
+        // Other transient Android system surfaces (power menu, notification shade,
+        // permission/system dialogs) remain available.
         if (hasActiveSystemUiSurface(event)) {
             hideShortNotice()
             hideOverlay()
@@ -156,6 +246,23 @@ class PauseAccessibilityService : AccessibilityService() {
         }
 
         val foregroundPackage = resolveForegroundPackage(event) ?: return
+
+        if (foregroundPackage in launcherPackages) {
+            if (launcherEscapeConfirmed(foregroundPackage)) {
+                ShortVideoDiagnostics.log(
+                    this,
+                    "PauseEscape",
+                    "launcher foreground blocked package=$foregroundPackage"
+                )
+                resetShortVideoNavigation()
+                hideShortNotice()
+                hideOverlay()
+                returnToPause(force = true)
+            }
+            return
+        } else {
+            clearLauncherCandidate()
+        }
 
         if (
             store.blockShortVideos &&
@@ -649,8 +756,8 @@ class PauseAccessibilityService : AccessibilityService() {
             .any { it == SYSTEM_UI_PACKAGE }
     }
 
-    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
-        val currentApplication = windows.asSequence()
+    private fun currentApplicationPackage(): String? =
+        windows.asSequence()
             .filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                     !it.isInPictureInPictureMode
@@ -662,6 +769,68 @@ class PauseAccessibilityService : AccessibilityService() {
             )
             .mapNotNull { it.root?.packageName?.toString() }
             .firstOrNull()
+
+    private fun visibleLauncherWithoutOtherApp(): String? {
+        val visibleAppPackages = windows.asSequence()
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    !it.isInPictureInPictureMode
+            }
+            .mapNotNull { window ->
+                window.root?.takeIf { it.isVisibleToUser }?.packageName?.toString()
+            }
+            .toList()
+
+        if (visibleAppPackages.any {
+                it !in launcherPackages && it != packageName && it != SYSTEM_UI_PACKAGE
+            }
+        ) {
+            return null
+        }
+        return visibleAppPackages.firstOrNull { it in launcherPackages }
+    }
+
+    private fun launcherEscapeConfirmed(candidate: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (launcherCandidatePackage != candidate) {
+            launcherCandidatePackage = candidate
+            launcherCandidateSince = now
+            return false
+        }
+        return now - launcherCandidateSince >= HOME_CONFIRM_MS
+    }
+
+    private fun clearLauncherCandidate() {
+        launcherCandidatePackage = null
+        launcherCandidateSince = 0L
+    }
+
+    private fun isSystemEscapeEvent(event: AccessibilityEvent?): Boolean {
+        if (event?.packageName?.toString() != SYSTEM_UI_PACKAGE) return false
+
+        val signature = buildString {
+            append(event.className?.toString().orEmpty())
+            append(' ')
+            append(event.contentDescription?.toString().orEmpty())
+            append(' ')
+            event.text.forEach {
+                append(it?.toString().orEmpty())
+                append(' ')
+            }
+        }.lowercase()
+
+        return listOf(
+            "recent",
+            "recents",
+            "overview",
+            "quickstep",
+            "taskview",
+            "task_view",
+        ).any(signature::contains)
+    }
+
+    private fun resolveForegroundPackage(event: AccessibilityEvent?): String? {
+        val currentApplication = currentApplicationPackage()
             ?: shortNoticePackage?.takeIf { owner ->
                 // A focusable notice owns focus; its visible underlying app is
                 // still the foreground app even when Usage Access lags behind.
@@ -703,9 +872,9 @@ class PauseAccessibilityService : AccessibilityService() {
         return event?.packageName?.toString()
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        if (!force && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
         startActivity(
@@ -802,6 +971,7 @@ class PauseAccessibilityService : AccessibilityService() {
     companion object {
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 180L
+        private const val HOME_CONFIRM_MS = 450L
         private const val WATCHDOG_INTERVAL_MS = 200L
         private const val UNLOCK_GRACE_MS = 1_000L
 
