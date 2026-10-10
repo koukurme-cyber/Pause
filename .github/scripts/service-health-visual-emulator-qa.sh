@@ -48,10 +48,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell settings put global hide_error_dialogs 1 || true
 adb shell settings put secure immersive_mode_confirmations confirmed || true
 
-# Start once to clear package STOPPED state so AccessibilityManager can bind it.
-adb shell am start -W -n "$ACTIVITY" >/dev/null
-sleep 1
-
+# Install the test prefs before launching the process. PauseStore caches
+# SharedPreferences in memory; changing its backing file after launch would
+# incorrectly leave the first-run setup state active.
 END_MS="$(( $(date +%s%3N) + 10 * 60 * 1000 ))"
 cat > /tmp/pause-health-prefs.xml <<EOF
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
@@ -68,6 +67,10 @@ adb push /tmp/pause-health-prefs.xml /data/local/tmp/pause-health-prefs.xml >/de
 adb shell chmod 644 /data/local/tmp/pause-health-prefs.xml
 adb shell run-as "$PKG" mkdir -p "/data/user/0/$PKG/shared_prefs"
 adb shell run-as "$PKG" cp /data/local/tmp/pause-health-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+
+# First launch un-stops the package with the intended preferences already loaded.
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+sleep 1
 
 adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
 adb shell cmd appops set "$PKG" GET_USAGE_STATS allow || true
