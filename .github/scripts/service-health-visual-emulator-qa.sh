@@ -98,7 +98,7 @@ fi
 echo "PASS: healthy service shows active Pause without false warning" | tee "$ARTIFACT_DIR/summary.txt"
 
 echo "Disable accessibility during an active session"
-adb shell settings --user 0 put secure enabled_accessibility_services ''
+adb shell settings --user 0 delete secure enabled_accessibility_services
 adb shell settings --user 0 put secure accessibility_enabled 0
 adb shell am start -W -n "$ACTIVITY" >/dev/null
 wait_for_text 'Служба блокировки отключена' || fail 'Missing visible failure warning after disabling accessibility'
