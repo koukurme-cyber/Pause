@@ -168,11 +168,14 @@ fun PauseRoot(
         }
     }
 
+    val activeSessionInStore = store.sessionEndEpochMs > System.currentTimeMillis()
     if (
-        !setupChecklistCompleted ||
-        !restrictedSettingsConfirmed ||
-        !usageAccessEnabled ||
-        !accessibilityEnabled
+        !activeSessionInStore && (
+            !setupChecklistCompleted ||
+            !restrictedSettingsConfirmed ||
+            !usageAccessEnabled ||
+            !accessibilityEnabled
+        )
     ) {
         SetupChecklistScreen(
             restrictedSettingsConfirmed = restrictedSettingsConfirmed,
@@ -496,6 +499,7 @@ fun PauseRoot(
             sessionEnd = sessionEnd,
             testModeEnabled = testModeEnabled,
             serviceUnresponsive = serviceUnresponsive,
+            accessibilityDisabled = !accessibilityEnabled,
             onRestoreService = { AccessibilityPauseBlocker.openSettings(context) },
             onLaunch = appsRepository::launch,
             onFinished = {
@@ -2811,6 +2815,7 @@ private fun ActiveScreen(
     sessionEnd: Long,
     testModeEnabled: Boolean,
     serviceUnresponsive: Boolean,
+    accessibilityDisabled: Boolean,
     onRestoreService: () -> Unit,
     onLaunch: (InstalledApp) -> Boolean,
     onFinished: () -> Unit,
@@ -2899,7 +2904,7 @@ private fun ActiveScreen(
                 textAlign = TextAlign.Center
             )
 
-            if (serviceUnresponsive) {
+            if (serviceUnresponsive || accessibilityDisabled) {
                 Spacer(Modifier.height(12.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2907,8 +2912,12 @@ private fun ActiveScreen(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("Служба блокировки не отвечает", fontWeight = FontWeight.SemiBold)
-                        Text("Блокировка может не действовать. Проверьте специальные возможности Android.", fontSize = 13.sp)
+                        Text(
+                            if (accessibilityDisabled) "Служба блокировки отключена"
+                            else "Служба блокировки не отвечает",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text("Защита может не действовать. Проверьте специальные возможности Android.", fontSize = 13.sp)
                         TextButton(onClick = onRestoreService) {
                             Text("Открыть настройки")
                         }
