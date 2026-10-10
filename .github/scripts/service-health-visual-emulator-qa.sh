@@ -136,4 +136,37 @@ if contains_text 'Служба блокировки отключена' || conta
 fi
 
 echo "PASS: accessibility recovered; visual warning automatically removed" | tee -a "$ARTIFACT_DIR/summary.txt"
+
+echo "Test: accessibility disabled when no active Pause session"
+adb shell settings --user 0 delete secure enabled_accessibility_services
+adb shell settings --user 0 put secure accessibility_enabled 0
+adb shell am force-stop "$PKG"
+sed '/name="session_end_epoch_ms"/d' /tmp/pause-health-prefs.xml > /tmp/pause-idle-prefs.xml
+adb push /tmp/pause-idle-prefs.xml /data/local/tmp/pause-idle-prefs.xml >/dev/null
+adb shell chmod 644 /data/local/tmp/pause-idle-prefs.xml
+adb shell run-as "$PKG" cp /data/local/tmp/pause-idle-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+wait_for_text 'Защита недоступна' || fail 'Idle Pause did not show automatic health warning'
+wait_for_text 'Специальные возможности отключены' || fail 'Idle warning did not explain accessibility failure'
+if contains_text 'Настройка Паузы'; then
+  fail 'Idle Pause wrongly opened first-run setup after accessibility was disabled'
+fi
+snapshot idle-accessibility-disabled
+echo "PASS: no-session accessibility failure shown on main screen (not onboarding)" | tee -a "$ARTIFACT_DIR/summary.txt"
+
+echo "Test: cached acknowledgement is not displayed as verified restricted access"
+adb shell am force-stop "$PKG"
+sed 's/name="setup_checklist_completed" value="true"/name="setup_checklist_completed" value="false"/' /tmp/pause-idle-prefs.xml > /tmp/pause-onboarding-prefs.xml
+adb push /tmp/pause-onboarding-prefs.xml /data/local/tmp/pause-onboarding-prefs.xml >/dev/null
+adb shell chmod 644 /data/local/tmp/pause-onboarding-prefs.xml
+adb shell run-as "$PKG" cp /data/local/tmp/pause-onboarding-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS ignore
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+wait_for_text 'Разрешить запрещённые настройки' || fail 'Onboarding restricted settings step not visible'
+if contains_text 'Системное разрешение подтверждено'; then
+  fail 'Restricted settings marked system verified despite explicit AppOps denial'
+fi
+snapshot restricted-appop-denied
+echo "PASS: previously saved confirmation is not treated as system permission" | tee -a "$ARTIFACT_DIR/summary.txt"
+
 adb logcat -d > "$ARTIFACT_DIR/logcat.txt" || true
