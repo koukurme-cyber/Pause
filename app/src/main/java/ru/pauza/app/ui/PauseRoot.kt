@@ -2885,7 +2885,10 @@ private fun ActiveScreen(
                     Modifier
                         .size(9.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF3DB94A))
+                        .background(
+                            if (serviceUnresponsive || accessibilityDisabled) Color(0xFFE06438)
+                            else Color(0xFF3DB94A)
+                        )
                 )
                 Spacer(Modifier.width(9.dp))
                 Text(
