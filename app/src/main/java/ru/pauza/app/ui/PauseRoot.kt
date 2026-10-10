@@ -920,6 +920,7 @@ private fun SetupScreen(
     onContinue: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    val canContinue = duration.isValid && protectionWarning == null
     val appListState = rememberLazyListState()
     val allApps = remember(apps, alwaysApps) { alwaysApps + apps }
     val filteredApps = remember(allApps, searchQuery) {
@@ -1161,7 +1162,7 @@ private fun SetupScreen(
                     )
                     .clip(RoundedCornerShape(19.dp))
                     .background(
-                        if (duration.isValid) {
+                        if (canContinue) {
                             Brush.horizontalGradient(
                                 listOf(Color(0xFF1E6842), Color(0xFF45B44D))
                             )
@@ -1171,12 +1172,12 @@ private fun SetupScreen(
                             )
                         }
                     )
-                    .clickable(enabled = duration.isValid, onClick = onContinue),
+                    .clickable(enabled = canContinue, onClick = onContinue),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "Продолжить",
-                    color = if (duration.isValid) Color.White else Color(0xFF9A9C98),
+                    color = if (canContinue) Color.White else Color(0xFF9A9C98),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp
                 )
