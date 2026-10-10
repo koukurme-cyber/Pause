@@ -62,6 +62,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private val watchdog = object : Runnable {
         override fun run() {
             try {
+                lastWatchdogAt = SystemClock.elapsedRealtime()
                 enforceSafely()
             } finally {
                 handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
@@ -71,6 +72,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        connected = true
+        lastWatchdogAt = SystemClock.elapsedRealtime()
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -561,13 +564,27 @@ class PauseAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        connected = false
+        lastWatchdogAt = 0L
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        connected = false
+        lastWatchdogAt = 0L
         handler.removeCallbacks(watchdog)
         hideShortNotice()
         super.onDestroy()
     }
 
     companion object {
+        @Volatile private var connected = false
+        @Volatile private var lastWatchdogAt = 0L
+
+        fun isResponsive(): Boolean = connected &&
+            SystemClock.elapsedRealtime() - lastWatchdogAt in 0L..3_000L
+
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val RETURN_DEBOUNCE_MS = 250L
         private const val WATCHDOG_INTERVAL_MS = 300L
