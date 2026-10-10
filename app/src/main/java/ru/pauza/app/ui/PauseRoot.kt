@@ -76,6 +76,7 @@ fun PauseRoot(
     var accessibilityEnabled by remember {
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
+    var showServiceUnavailable by remember { mutableStateOf(false) }
     var firstSetupCompleted by remember {
         mutableStateOf(store.firstSetupCompleted)
     }
@@ -85,6 +86,25 @@ fun PauseRoot(
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
             delay(700)
         }
+    }
+
+    if (showServiceUnavailable) {
+        AlertDialog(
+            onDismissRequest = { showServiceUnavailable = false },
+            title = { Text("Защита не работает") },
+            text = {
+                Text("Доступ к специальным возможностям может быть включён, но служба «Паузы» не отвечает. Пауза не запущена. Откройте специальные возможности, выключите и снова включите службу «Пауза», затем повторите запуск.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showServiceUnavailable = false
+                    AccessibilityPauseBlocker.openSettings(context)
+                }) { Text("Открыть настройки") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showServiceUnavailable = false }) { Text("Отмена") }
+            },
+        )
     }
 
     if (!firstSetupCompleted || !accessibilityEnabled) {
@@ -102,10 +122,12 @@ fun PauseRoot(
                 AccessibilityPauseBlocker.openSettings(context)
             },
             onContinue = {
-                if (AccessibilityPauseBlocker.isEnabled(context)) {
+                if (AccessibilityPauseBlocker.isReady(context)) {
                     store.firstSetupCompleted = true
                     firstSetupCompleted = true
                     accessibilityEnabled = true
+                } else {
+                    showServiceUnavailable = true
                 }
             },
         )
@@ -164,6 +186,9 @@ fun PauseRoot(
             duration = duration,
             onBack = { screen = Screen.SETUP },
             onStart = {
+                if (!AccessibilityPauseBlocker.isReady(context)) {
+                    showServiceUnavailable = true
+                } else {
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
@@ -172,6 +197,7 @@ fun PauseRoot(
                     sessionEnd
                 )
                 screen = Screen.ACTIVE
+                }
             }
         )
 
