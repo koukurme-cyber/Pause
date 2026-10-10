@@ -41,6 +41,18 @@ jobs:
           sed -i 's/versionName = "0.6.3"/versionName = "0.8.69"/' app/build.gradle.kts
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - name: Prepare 0.8.69 test APK
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Pauza-0.8.69-test.apk
+          test -s Pauza-0.8.69-test.apk
+          sha256sum Pauza-0.8.69-test.apk
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pauza-0.8.69-test-apk
+          path: Pauza-0.8.69-test.apk
+          if-no-files-found: error
+          retention-days: 14
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
