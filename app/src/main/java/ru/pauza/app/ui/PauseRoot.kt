@@ -84,6 +84,8 @@ import ru.pauza.app.domain.AccessibilityPauseBlocker
 import ru.pauza.app.domain.PauseAccessibilityService
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
+import ru.pauza.app.domain.RestrictedSettingsMonitor
+import ru.pauza.app.domain.RestrictedSettingsStatus
 import ru.pauza.app.domain.NotificationSilencer
 import ru.pauza.app.domain.ShortVideoDiagnostics
 import ru.pauza.app.domain.UsageAccessMonitor
@@ -137,6 +139,9 @@ fun PauseRoot(
     var restrictedSettingsConfirmed by remember {
         mutableStateOf(store.restrictedSettingsConfirmed)
     }
+    var restrictedSettingsStatus by remember {
+        mutableStateOf(RestrictedSettingsMonitor.check(context))
+    }
     var setupChecklistCompleted by remember {
         mutableStateOf(store.setupChecklistCompleted)
     }
@@ -162,6 +167,7 @@ fun PauseRoot(
                 if (responding) showServiceWarning = false
             }
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
+            restrictedSettingsStatus = RestrictedSettingsMonitor.check(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             notificationPolicyAccessGranted = NotificationSilencer.isPolicyAccessGranted(context)
             delay(700)
@@ -169,16 +175,17 @@ fun PauseRoot(
     }
 
     val activeSessionInStore = store.sessionEndEpochMs > System.currentTimeMillis()
-    if (
-        !activeSessionInStore && (
-            !setupChecklistCompleted ||
-            !restrictedSettingsConfirmed ||
-            !usageAccessEnabled ||
-            !accessibilityEnabled
-        )
-    ) {
+    val restrictedStepReady = when (restrictedSettingsStatus) {
+        RestrictedSettingsStatus.ALLOWED -> true
+        RestrictedSettingsStatus.DENIED -> false
+        RestrictedSettingsStatus.UNKNOWN -> restrictedSettingsConfirmed
+    }
+    // Permission changes after setup are health failures, not a reason to
+    // replace the app with the first-run onboarding wizard.
+    if (!setupChecklistCompleted && !activeSessionInStore) {
         SetupChecklistScreen(
-            restrictedSettingsConfirmed = restrictedSettingsConfirmed,
+            restrictedSettingsConfirmed = restrictedStepReady,
+            restrictedSettingsStatus = restrictedSettingsStatus,
             usageAccessEnabled = usageAccessEnabled,
             accessibilityEnabled = accessibilityEnabled,
             batteryUnrestricted = batteryUnrestricted,
@@ -191,8 +198,12 @@ fun PauseRoot(
                 )
             },
             onConfirmRestrictedSettings = {
-                store.restrictedSettingsConfirmed = true
-                restrictedSettingsConfirmed = true
+                // On OEMs where the app-op is unreadable, allow explicit
+                // acknowledgement but never present it as verified.
+                if (restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
+                    store.restrictedSettingsConfirmed = true
+                    restrictedSettingsConfirmed = true
+                }
             },
             onOpenUsageAccess = {
                 UsageAccessMonitor.openSettings(context)
@@ -205,7 +216,7 @@ fun PauseRoot(
             },
             onContinue = {
                 if (
-                    restrictedSettingsConfirmed &&
+                    restrictedStepReady &&
                     UsageAccessMonitor.isGranted(context) &&
                     AccessibilityPauseBlocker.isEnabled(context)
                 ) {
@@ -337,6 +348,25 @@ fun PauseRoot(
 
     when (screen) {
         Screen.SETUP -> SetupScreen(
+            protectionWarning = when {
+                !accessibilityEnabled -> "Специальные возможности отключены. Блокировка не работает."
+                serviceUnresponsive -> "Служба блокировки не отвечает. Пауза не защищена."
+                !usageAccessEnabled -> "Нет доступа к статистике использования. Защита может не работать."
+                restrictedSettingsStatus == RestrictedSettingsStatus.DENIED ->
+                    "Запрещённые настройки не разрешены. Проверьте системные разрешения."
+                else -> null
+            },
+            onOpenProtectionSettings = {
+                when {
+                    !accessibilityEnabled || serviceUnresponsive ->
+                        AccessibilityPauseBlocker.openSettings(context)
+                    !usageAccessEnabled -> UsageAccessMonitor.openSettings(context)
+                    else -> context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + context.packageName))
+                    )
+                }
+            },
             apps = apps,
             alwaysApps = alwaysApps,
             loading = loading,
@@ -472,7 +502,11 @@ fun PauseRoot(
             onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
-                if (!AccessibilityPauseBlocker.isEnabled(context) || !PauseAccessibilityService.isServiceResponding()) {
+                if (!AccessibilityPauseBlocker.isEnabled(context) ||
+                    !PauseAccessibilityService.isServiceResponding() ||
+                    !UsageAccessMonitor.isGranted(context) ||
+                    RestrictedSettingsMonitor.check(context) == RestrictedSettingsStatus.DENIED
+                ) {
                     ShortVideoDiagnostics.log(context, "PauseHealth", "Pause start denied: accessibility service is unavailable")
                     showServiceWarning = true
                 } else {
@@ -590,6 +624,7 @@ private fun SoftScreenBackground(
 @Composable
 private fun SetupChecklistScreen(
     restrictedSettingsConfirmed: Boolean,
+    restrictedSettingsStatus: RestrictedSettingsStatus,
     usageAccessEnabled: Boolean,
     accessibilityEnabled: Boolean,
     batteryUnrestricted: Boolean,
@@ -637,14 +672,23 @@ private fun SetupChecklistScreen(
                     title = "Разрешить запрещённые настройки",
                     text = "На разных оболочках Android предоставление этого разрешения устроено по-разному: название пункта и путь к нему могут отличаться. На HyperOS: настройки приложения «Пауза» → меню ⋮ → «Разрешить запрещённые настройки». Если такого пункта нет, вернитесь и подтвердите шаг.",
                     completed = restrictedSettingsConfirmed,
+                    verified = restrictedSettingsStatus == RestrictedSettingsStatus.ALLOWED,
+                    completedLabel = when (restrictedSettingsStatus) {
+                        RestrictedSettingsStatus.ALLOWED -> "Системное разрешение подтверждено"
+                        RestrictedSettingsStatus.DENIED -> "Разрешение отключено"
+                        RestrictedSettingsStatus.UNKNOWN ->
+                            "Отмечено вручную — системный статус неизвестен"
+                    },
                     enabled = !restrictedSettingsConfirmed,
-                    buttonText = if (restrictedSettingsOpened) {
+                    buttonText = if (restrictedSettingsOpened &&
+                        restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
                         "Подтвердить, что разрешено"
                     } else {
                         "Открыть настройки приложения"
                     },
                     onClick = {
-                        if (restrictedSettingsOpened) {
+                        if (restrictedSettingsOpened &&
+                            restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
                             onConfirmRestrictedSettings()
                         } else {
                             restrictedSettingsOpened = true
@@ -743,8 +787,11 @@ private fun SetupChecklistCard(
     buttonText: String,
     onClick: () -> Unit,
     optional: Boolean = false,
+    verified: Boolean = true,
+    completedLabel: String = "Готово",
 ) {
     val outline = when {
+        completed && !verified -> Color(0xFFE4BC69)
         completed -> Color(0xFFB7D8BB)
         enabled -> Color(0xFFB8CCB8)
         else -> Color(0xFFE1E2DD)
@@ -769,6 +816,7 @@ private fun SetupChecklistCard(
                         .clip(CircleShape)
                         .background(
                             when {
+                                completed && !verified -> Color(0xFFFFE8A8)
                                 completed -> Color(0xFF38B54A)
                                 enabled -> Color(0xFFE0F2DF)
                                 else -> Color(0xFFE8E8E4)
@@ -777,8 +825,9 @@ private fun SetupChecklistCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (completed) "✓" else number,
+                        if (completed && !verified) "?" else if (completed) "✓" else number,
                         color = when {
+                            completed && !verified -> Color(0xFF765B18)
                             completed -> Color.White
                             enabled -> Color(0xFF17633D)
                             else -> Color(0xFF858984)
@@ -821,8 +870,8 @@ private fun SetupChecklistCard(
                     if (completed) {
                         Spacer(Modifier.height(5.dp))
                         Text(
-                            "Готово",
-                            color = Color(0xFF21813B),
+                            completedLabel,
+                            color = if (verified) Color(0xFF21813B) else Color(0xFF765B18),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
@@ -854,6 +903,8 @@ private fun SetupChecklistCard(
 
 @Composable
 private fun SetupScreen(
+    protectionWarning: String?,
+    onOpenProtectionSettings: () -> Unit,
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
     loading: Boolean,
@@ -926,6 +977,23 @@ private fun SetupScreen(
                         tint = Color(0xFF263029),
                         modifier = Modifier.size(28.dp)
                     )
+                }
+            }
+
+            if (protectionWarning != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF0D8)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Защита недоступна", fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text(protectionWarning, fontSize = 13.sp)
+                        TextButton(onClick = onOpenProtectionSettings) {
+                            Text("Открыть настройки")
+                        }
+                    }
                 }
             }
 
