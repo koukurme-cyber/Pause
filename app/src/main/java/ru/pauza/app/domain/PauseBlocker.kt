@@ -17,6 +17,9 @@ class AccessibilityPauseBlocker(private val context: Context) : PauseBlocker {
     override fun stop() = Unit
 
     companion object {
+        fun isReady(context: Context): Boolean =
+            isEnabled(context) && PauseAccessibilityService.isResponsive()
+
         fun isEnabled(context: Context): Boolean {
             val target = ComponentName(context, PauseAccessibilityService::class.java)
 
