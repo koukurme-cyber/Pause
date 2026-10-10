@@ -77,6 +77,8 @@ fun PauseRoot(
         mutableStateOf(AccessibilityPauseBlocker.isEnabled(context))
     }
     var showServiceUnavailable by remember { mutableStateOf(false) }
+    var serviceReady by remember { mutableStateOf(AccessibilityPauseBlocker.isReady(context)) }
+    var consecutiveServiceFailures by remember { mutableIntStateOf(0) }
     var firstSetupCompleted by remember {
         mutableStateOf(store.firstSetupCompleted)
     }
@@ -84,16 +86,30 @@ fun PauseRoot(
     LaunchedEffect(Unit) {
         while (true) {
             accessibilityEnabled = AccessibilityPauseBlocker.isEnabled(context)
+            serviceReady = AccessibilityPauseBlocker.isReady(context)
+            consecutiveServiceFailures = if (serviceReady) 0 else
+                (consecutiveServiceFailures + 1).coerceAtMost(3)
+            if (serviceReady) showServiceUnavailable = false
             delay(700)
         }
     }
 
-    if (showServiceUnavailable) {
+    val activeSession = store.sessionEndEpochMs > System.currentTimeMillis()
+    val protectionFailed = firstSetupCompleted &&
+        consecutiveServiceFailures >= 3 && !serviceReady
+
+    if (showServiceUnavailable || protectionFailed) {
         AlertDialog(
-            onDismissRequest = { showServiceUnavailable = false },
+            onDismissRequest = { if (!protectionFailed) showServiceUnavailable = false },
             title = { Text("Защита не работает") },
             text = {
-                Text("Доступ к специальным возможностям может быть включён, но служба «Паузы» не отвечает. Пауза не запущена. Откройте специальные возможности, выключите и снова включите службу «Пауза», затем повторите запуск.")
+                Text(
+                    if (activeSession) {
+                        "Во время действующей паузы служба специальных возможностей не отвечает. Защита может не работать. Откройте настройки и повторно включите службу «Пауза»."
+                    } else {
+                        "Служба специальных возможностей не отвечает, даже если системный переключатель включён. Новая пауза не запустится. Откройте настройки, выключите и снова включите службу «Пауза»."
+                    }
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -101,13 +117,15 @@ fun PauseRoot(
                     AccessibilityPauseBlocker.openSettings(context)
                 }) { Text("Открыть настройки") }
             },
-            dismissButton = {
-                TextButton(onClick = { showServiceUnavailable = false }) { Text("Отмена") }
-            },
+            dismissButton = if (!protectionFailed) {
+                {
+                    TextButton(onClick = { showServiceUnavailable = false }) { Text("Отмена") }
+                }
+            } else null,
         )
     }
 
-    if (!firstSetupCompleted || !accessibilityEnabled) {
+    if (!firstSetupCompleted || (!accessibilityEnabled && !activeSession)) {
         FirstSetupScreen(
             accessEnabled = accessibilityEnabled,
             onOpenAppSettings = {
@@ -189,14 +207,14 @@ fun PauseRoot(
                 if (!AccessibilityPauseBlocker.isReady(context)) {
                     showServiceUnavailable = true
                 } else {
-                sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
-                store.selectedPackages = selected
-                store.sessionEndEpochMs = sessionEnd
-                blocker.start(
-                    selected + appsRepository.alwaysAllowedPackages(),
-                    sessionEnd
-                )
-                screen = Screen.ACTIVE
+                    sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
+                    store.selectedPackages = selected
+                    store.sessionEndEpochMs = sessionEnd
+                    blocker.start(
+                        selected + appsRepository.alwaysAllowedPackages(),
+                        sessionEnd
+                    )
+                    screen = Screen.ACTIVE
                 }
             }
         )
