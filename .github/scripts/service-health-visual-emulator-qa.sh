@@ -204,4 +204,33 @@ wait_for_text 'Сведения о приложении' || fail 'App info navig
 snapshot onboarding-help
 echo "PASS: onboarding starts with accessibility and reveals conditional restricted-settings instructions" | tee -a "$ARTIFACT_DIR/summary.txt"
 
+echo "Test: permission button on a 320dp-wide screen with 150% font scale"
+adb shell am force-stop "$PKG"
+adb shell wm size 720x1600
+adb shell wm density 360
+adb shell settings put system font_scale 1.5
+adb shell am start -W -n "$ACTIVITY" >/dev/null
+wait_for_text 'Открыть специальные возможности' || fail 'Permission button missing at narrow width or large font'
+snapshot onboarding-narrow-150percent-text
+adb shell uiautomator dump /sdcard/pauza-narrow-ui.xml >/dev/null 2>&1 || fail 'Narrow screen hierarchy could not be read'
+adb shell cat /sdcard/pauza-narrow-ui.xml > "$ARTIFACT_DIR/onboarding-narrow-150percent-text.xml"
+python3 - <<'PY' || fail 'Permission button text is clipped or outside the narrow display'
+import re
+import xml.etree.ElementTree as ET
+root=ET.parse("qa-artifacts/health-visual/onboarding-narrow-150percent-text.xml").getroot()
+targets=[n for n in root.iter("node") if n.attrib.get("text")=="Открыть специальные возможности"]
+assert len(targets)==1, f"Expected one accessible permission button, got {len(targets)}"
+bound=targets[0].attrib.get("bounds","")
+m=re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",bound)
+assert m, f"Invalid bounds: {bound}"
+x1,y1,x2,y2=map(int,m.groups())
+assert x2>x1 and y2>y1 and x1>=0 and x2<=720 and y1>=0 and y2<=1600, f"Out of viewport: {bound}"
+assert y2-y1>=70, f"Large-font button unexpectedly short: {bound}"
+print("PASS: narrow button bounds =",bound)
+PY
+echo "PASS: permission button fits 320dp screen with 150% font scale" | tee -a "$ARTIFACT_DIR/summary.txt"
+adb shell wm size reset
+adb shell wm density reset
+adb shell settings put system font_scale 1.0
+
 adb logcat -d > "$ARTIFACT_DIR/logcat.txt" || true
