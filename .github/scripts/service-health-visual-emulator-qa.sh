@@ -36,6 +36,29 @@ wait_for_text() {
   return 1
 }
 
+tap_ui_text() {
+  local wanted="$1"
+  adb shell uiautomator dump /sdcard/pauza-tap.xml >/dev/null 2>&1 || true
+  adb shell cat /sdcard/pauza-tap.xml > /tmp/pauza-tap.xml
+  local coords
+  coords="$(python3 - "$wanted" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+wanted = sys.argv[1]
+root = ET.parse('/tmp/pauza-tap.xml').getroot()
+for node in root.iter('node'):
+    if node.attrib.get('text') != wanted and node.attrib.get('content-desc') != wanted:
+        continue
+    match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds',''))
+    if match:
+        x1,y1,x2,y2 = map(int, match.groups())
+        print((x1+x2)//2, (y1+y2)//2)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+)" || fail "Cannot tap UI element: $wanted"
+  adb shell input tap $coords
+}
+
 fail() {
   echo "FAIL: $*" | tee -a "$ARTIFACT_DIR/summary.txt"
   snapshot failure
@@ -154,7 +177,7 @@ fi
 snapshot idle-accessibility-disabled
 echo "PASS: no-session accessibility failure shown on main screen (not onboarding)" | tee -a "$ARTIFACT_DIR/summary.txt"
 
-echo "Test: cached acknowledgement is not displayed as verified restricted access"
+echo "Test: adaptive onboarding with restricted AppOps and cached acknowledgement"
 adb shell am force-stop "$PKG"
 sed 's/name="setup_checklist_completed" value="true"/name="setup_checklist_completed" value="false"/' /tmp/pause-idle-prefs.xml > /tmp/pause-onboarding-prefs.xml
 adb push /tmp/pause-onboarding-prefs.xml /data/local/tmp/pause-onboarding-prefs.xml >/dev/null
@@ -162,11 +185,23 @@ adb shell chmod 644 /data/local/tmp/pause-onboarding-prefs.xml
 adb shell run-as "$PKG" cp /data/local/tmp/pause-onboarding-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
 adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS ignore
 adb shell am start -W -n "$ACTIVITY" >/dev/null
-wait_for_text 'Разрешить запрещённые настройки' || fail 'Onboarding restricted settings step not visible'
+wait_for_text 'Настройка Паузы' || fail 'Onboarding wizard did not open'
+wait_for_text 'Специальные возможности' || fail 'Accessibility not offered as the first permission'
 if contains_text 'Системное разрешение подтверждено'; then
-  fail 'Restricted settings marked system verified despite explicit AppOps denial'
+  fail 'Old user acknowledgement was shown as verified restricted permission'
 fi
-snapshot restricted-appop-denied
-echo "PASS: previously saved confirmation is not treated as system permission" | tee -a "$ARTIFACT_DIR/summary.txt"
+if contains_text 'Разрешить запрещённые настройки'; then
+  fail 'Restricted settings were presented as mandatory before trying accessibility'
+fi
+snapshot onboarding-before-attempt
+
+tap_ui_text 'Открыть специальные возможности'
+sleep 2
+adb shell input keyevent KEYCODE_BACK
+wait_for_text 'Если Android не даёт включить службу' || fail 'Troubleshooting guide did not appear after trying accessibility'
+adb shell input swipe 550 1700 550 900 400
+wait_for_text 'Сведения о приложении' || fail 'App info navigation missing from restricted-settings guide'
+snapshot onboarding-help
+echo "PASS: onboarding starts with accessibility and reveals conditional restricted-settings instructions" | tee -a "$ARTIFACT_DIR/summary.txt"
 
 adb logcat -d > "$ARTIFACT_DIR/logcat.txt" || true
