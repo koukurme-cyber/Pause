@@ -84,8 +84,6 @@ import ru.pauza.app.domain.AccessibilityPauseBlocker
 import ru.pauza.app.domain.PauseAccessibilityService
 import ru.pauza.app.domain.BatteryOptimizationHelper
 import ru.pauza.app.domain.PauseBlocker
-import ru.pauza.app.domain.RestrictedSettingsMonitor
-import ru.pauza.app.domain.RestrictedSettingsStatus
 import ru.pauza.app.domain.NotificationSilencer
 import ru.pauza.app.domain.ShortVideoDiagnostics
 import ru.pauza.app.domain.UsageAccessMonitor
@@ -136,11 +134,9 @@ fun PauseRoot(
     var notificationPolicyAccessGranted by remember {
         mutableStateOf(NotificationSilencer.isPolicyAccessGranted(context))
     }
-    var restrictedSettingsConfirmed by remember {
-        mutableStateOf(store.restrictedSettingsConfirmed)
-    }
-    var restrictedSettingsStatus by remember {
-        mutableStateOf(RestrictedSettingsMonitor.check(context))
+    // Actual service liveness is the completion signal, not an old checkbox.
+    var serviceResponding by remember {
+        mutableStateOf(PauseAccessibilityService.isServiceResponding())
     }
     var setupChecklistCompleted by remember {
         mutableStateOf(store.setupChecklistCompleted)
@@ -151,6 +147,7 @@ fun PauseRoot(
             val enabled = AccessibilityPauseBlocker.isEnabled(context)
             accessibilityEnabled = enabled
             val responding = PauseAccessibilityService.isServiceResponding()
+            serviceResponding = responding
             val nowElapsed = SystemClock.elapsedRealtime()
             if (enabled && !responding) {
                 if (serviceFailureSince == 0L) serviceFailureSince = nowElapsed
@@ -167,7 +164,6 @@ fun PauseRoot(
                 if (responding) showServiceWarning = false
             }
             usageAccessEnabled = UsageAccessMonitor.isGranted(context)
-            restrictedSettingsStatus = RestrictedSettingsMonitor.check(context)
             batteryUnrestricted = BatteryOptimizationHelper.isUnrestricted(context)
             notificationPolicyAccessGranted = NotificationSilencer.isPolicyAccessGranted(context)
             delay(700)
@@ -175,19 +171,13 @@ fun PauseRoot(
     }
 
     val activeSessionInStore = store.sessionEndEpochMs > System.currentTimeMillis()
-    val restrictedStepReady = when (restrictedSettingsStatus) {
-        RestrictedSettingsStatus.ALLOWED -> true
-        RestrictedSettingsStatus.DENIED -> false
-        RestrictedSettingsStatus.UNKNOWN -> restrictedSettingsConfirmed
-    }
     // Permission changes after setup are health failures, not a reason to
     // replace the app with the first-run onboarding wizard.
     if (!setupChecklistCompleted && !activeSessionInStore) {
         SetupChecklistScreen(
-            restrictedSettingsConfirmed = restrictedStepReady,
-            restrictedSettingsStatus = restrictedSettingsStatus,
             usageAccessEnabled = usageAccessEnabled,
             accessibilityEnabled = accessibilityEnabled,
+            serviceResponding = serviceResponding,
             batteryUnrestricted = batteryUnrestricted,
             onOpenAppSettings = {
                 context.startActivity(
@@ -197,28 +187,14 @@ fun PauseRoot(
                     )
                 )
             },
-            onConfirmRestrictedSettings = {
-                // On OEMs where the app-op is unreadable, allow explicit
-                // acknowledgement but never present it as verified.
-                if (restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
-                    store.restrictedSettingsConfirmed = true
-                    restrictedSettingsConfirmed = true
-                }
-            },
-            onOpenUsageAccess = {
-                UsageAccessMonitor.openSettings(context)
-            },
-            onOpenAccessibility = {
-                AccessibilityPauseBlocker.openSettings(context)
-            },
-            onOpenBatterySettings = {
-                BatteryOptimizationHelper.openSettings(context)
-            },
+            onOpenUsageAccess = { UsageAccessMonitor.openSettings(context) },
+            onOpenAccessibility = { AccessibilityPauseBlocker.openSettings(context) },
+            onOpenBatterySettings = { BatteryOptimizationHelper.openSettings(context) },
             onContinue = {
                 if (
-                    restrictedStepReady &&
                     UsageAccessMonitor.isGranted(context) &&
-                    AccessibilityPauseBlocker.isEnabled(context)
+                    AccessibilityPauseBlocker.isEnabled(context) &&
+                    PauseAccessibilityService.isServiceResponding()
                 ) {
                     store.firstSetupCompleted = true
                     store.setupChecklistCompleted = true
@@ -352,8 +328,6 @@ fun PauseRoot(
                 !accessibilityEnabled -> "Специальные возможности отключены. Блокировка не работает."
                 serviceUnresponsive -> "Служба блокировки не отвечает. Пауза не защищена."
                 !usageAccessEnabled -> "Нет доступа к статистике использования. Защита может не работать."
-                restrictedSettingsStatus == RestrictedSettingsStatus.DENIED ->
-                    "Запрещённые настройки не разрешены. Проверьте системные разрешения."
                 else -> null
             },
             onOpenProtectionSettings = {
@@ -504,8 +478,7 @@ fun PauseRoot(
             onStart = {
                 if (!AccessibilityPauseBlocker.isEnabled(context) ||
                     !PauseAccessibilityService.isServiceResponding() ||
-                    !UsageAccessMonitor.isGranted(context) ||
-                    RestrictedSettingsMonitor.check(context) == RestrictedSettingsStatus.DENIED
+                    !UsageAccessMonitor.isGranted(context)
                 ) {
                     ShortVideoDiagnostics.log(context, "PauseHealth", "Pause start denied: accessibility service is unavailable")
                     showServiceWarning = true
@@ -623,22 +596,22 @@ private fun SoftScreenBackground(
 
 @Composable
 private fun SetupChecklistScreen(
-    restrictedSettingsConfirmed: Boolean,
-    restrictedSettingsStatus: RestrictedSettingsStatus,
     usageAccessEnabled: Boolean,
     accessibilityEnabled: Boolean,
+    serviceResponding: Boolean,
     batteryUnrestricted: Boolean,
     onOpenAppSettings: () -> Unit,
-    onConfirmRestrictedSettings: () -> Unit,
     onOpenUsageAccess: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onOpenBatterySettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
-    var restrictedSettingsOpened by rememberSaveable { mutableStateOf(false) }
+    var attemptedAccessibility by rememberSaveable { mutableStateOf(false) }
+    var showTroubleshooting by rememberSaveable { mutableStateOf(false) }
 
-    val requiredReady =
-        restrictedSettingsConfirmed && usageAccessEnabled && accessibilityEnabled
+    val serviceReady = accessibilityEnabled && serviceResponding
+    val requiredReady = serviceReady && usageAccessEnabled
+    val showHelp = !serviceReady && (attemptedAccessibility || showTroubleshooting)
 
     SoftScreenBackground {
         LazyColumn(
@@ -660,7 +633,7 @@ private fun SetupChecklistScreen(
                 )
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Сделайте настройки по порядку. Следующий шаг станет доступен после предыдущего.",
+                    "Включите нужные доступы. Пауза сама проверит, что они работают.",
                     color = PauseMuted,
                     lineHeight = 21.sp
                 )
@@ -669,42 +642,90 @@ private fun SetupChecklistScreen(
             item {
                 SetupChecklistCard(
                     number = "1",
-                    title = "Разрешить запрещённые настройки",
-                    text = "На разных оболочках Android предоставление этого разрешения устроено по-разному: название пункта и путь к нему могут отличаться. На HyperOS: настройки приложения «Пауза» → меню ⋮ → «Разрешить запрещённые настройки». Если такого пункта нет, вернитесь и подтвердите шаг.",
-                    completed = restrictedSettingsConfirmed,
-                    verified = restrictedSettingsStatus == RestrictedSettingsStatus.ALLOWED,
-                    completedLabel = when (restrictedSettingsStatus) {
-                        RestrictedSettingsStatus.ALLOWED -> "Системное разрешение подтверждено"
-                        RestrictedSettingsStatus.DENIED -> "Разрешение отключено"
-                        RestrictedSettingsStatus.UNKNOWN ->
-                            "Отмечено вручную — системный статус неизвестен"
-                    },
-                    enabled = !restrictedSettingsConfirmed,
-                    buttonText = if (restrictedSettingsOpened &&
-                        restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
-                        "Подтвердить, что разрешено"
+                    title = "Специальные возможности",
+                    text = if (accessibilityEnabled && !serviceResponding) {
+                        "Доступ отмечен как включённый, но служба пока не отвечает. Проверьте её в Android."
                     } else {
-                        "Открыть настройки приложения"
+                        "Включите службу «Пауза». Android может запросить дополнительное подтверждение."
+                    },
+                    completed = serviceReady,
+                    enabled = !serviceReady,
+                    buttonText = if (accessibilityEnabled) {
+                        "Проверить службу"
+                    } else {
+                        "Открыть специальные возможности"
                     },
                     onClick = {
-                        if (restrictedSettingsOpened &&
-                            restrictedSettingsStatus != RestrictedSettingsStatus.DENIED) {
-                            onConfirmRestrictedSettings()
-                        } else {
-                            restrictedSettingsOpened = true
-                            onOpenAppSettings()
-                        }
+                        attemptedAccessibility = true
+                        onOpenAccessibility()
                     }
                 )
+
+                if (!serviceReady) {
+                    TextButton(onClick = { showTroubleshooting = !showTroubleshooting }) {
+                        Text(
+                            if (showHelp) "Скрыть помощь"
+                            else "Не получается включить?"
+                        )
+                    }
+                }
+            }
+
+            if (showHelp) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF0D8)),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                "Если Android не даёт включить службу",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "1. Попробуйте открыть и включить «Паузу» в специальных возможностях. Если появится сообщение об ограничении, закройте его.",
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                            Text(
+                                "2. Откройте сведения о приложении «Пауза». Если есть меню ⋮, выберите «Разрешить запрещённые настройки». На некоторых телефонах этот пункт появляется только после первой попытки включения.",
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                            Text(
+                                "3. Вернитесь в специальные возможности и включите службу. Если меню ⋮ нет, попробуйте включить службу напрямую: отдельное разрешение может не требоваться.",
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                            Button(
+                                onClick = onOpenAppSettings,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Сведения о приложении")
+                            }
+                            TextButton(
+                                onClick = onOpenAccessibility,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Повторить попытку")
+                            }
+                        }
+                    }
+                }
             }
 
             item {
                 SetupChecklistCard(
                     number = "2",
                     title = "Доступ к статистике использования",
-                    text = "Нужен только для определения приложения на переднем плане и блокировки всего, чего нет в белом списке.",
+                    text = "Нужен, чтобы определять открытое приложение и соблюдать белый список.",
                     completed = usageAccessEnabled,
-                    enabled = restrictedSettingsConfirmed && !usageAccessEnabled,
+                    enabled = !usageAccessEnabled,
                     buttonText = "Открыть настройки",
                     onClick = onOpenUsageAccess
                 )
@@ -713,22 +734,8 @@ private fun SetupChecklistScreen(
             item {
                 SetupChecklistCard(
                     number = "3",
-                    title = "Специальные возможности",
-                    text = "Включите «Пауза» в специальных возможностях. Это резервный контроль и блокирующий экран.",
-                    completed = accessibilityEnabled,
-                    enabled = restrictedSettingsConfirmed &&
-                        usageAccessEnabled &&
-                        !accessibilityEnabled,
-                    buttonText = "Открыть настройки",
-                    onClick = onOpenAccessibility
-                )
-            }
-
-            item {
-                SetupChecklistCard(
-                    number = "4",
                     title = "Работа без ограничений батареи",
-                    text = "Рекомендуется для более надёжной работы Паузы в фоне. Этот шаг необязательный.",
+                    text = "Рекомендуется, чтобы Android реже останавливал службу. Необязательный шаг.",
                     completed = batteryUnrestricted,
                     enabled = requiredReady && !batteryUnrestricted,
                     buttonText = "Открыть настройки",
@@ -742,9 +749,7 @@ private fun SetupChecklistScreen(
                 Button(
                     onClick = onContinue,
                     enabled = requiredReady,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF123D2E),
@@ -752,16 +757,11 @@ private fun SetupChecklistScreen(
                     )
                 ) {
                     Text(
-                        if (batteryUnrestricted) {
-                            "Готово, открыть Паузу"
-                        } else {
-                            "Продолжить"
-                        },
+                        if (batteryUnrestricted) "Готово, открыть Паузу" else "Продолжить",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp
                     )
                 }
-
                 if (requiredReady && !batteryUnrestricted) {
                     Spacer(Modifier.height(7.dp))
                     Text(
