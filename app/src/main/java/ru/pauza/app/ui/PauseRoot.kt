@@ -884,8 +884,9 @@ private fun SetupChecklistCard(
                     enabled = enabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp),
+                        .heightIn(min = 48.dp),
                     shape = RoundedCornerShape(13.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 11.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFE1F2DE),
                         contentColor = Color(0xFF164E34),
@@ -893,7 +894,14 @@ private fun SetupChecklistCard(
                         disabledContentColor = Color(0xFF9A9C98),
                     )
                 ) {
-                    Text(buttonText, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = buttonText,
+                        modifier = Modifier.fillMaxWidth(),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
