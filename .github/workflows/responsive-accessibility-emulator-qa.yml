@@ -3,7 +3,7 @@ name: Pauza 0.8.72 Responsive Setup QA
 on:
   push:
     branches:
-      - adaptive-permissions-0.8.72
+      - responsive-accessibility-setup-0.8.72
     paths:
       - "app/**"
       - ".github/scripts/service-health-visual-emulator-qa.sh"
