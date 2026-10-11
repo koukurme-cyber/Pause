@@ -606,12 +606,11 @@ private fun SetupChecklistScreen(
     onOpenBatterySettings: () -> Unit,
     onContinue: () -> Unit,
 ) {
-    var attemptedAccessibility by rememberSaveable { mutableStateOf(false) }
     var showTroubleshooting by rememberSaveable { mutableStateOf(false) }
 
     val serviceReady = accessibilityEnabled && serviceResponding
     val requiredReady = serviceReady && usageAccessEnabled
-    val showHelp = !serviceReady && (attemptedAccessibility || showTroubleshooting)
+    val showHelp = !serviceReady && showTroubleshooting
 
     SoftScreenBackground {
         LazyColumn(
@@ -656,7 +655,7 @@ private fun SetupChecklistScreen(
                         "Открыть специальные возможности"
                     },
                     onClick = {
-                        attemptedAccessibility = true
+                        showTroubleshooting = true
                         onOpenAccessibility()
                     }
                 )
