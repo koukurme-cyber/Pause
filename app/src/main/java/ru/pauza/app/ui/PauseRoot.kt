@@ -473,6 +473,7 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             duration = duration,
+            onDurationChange = { duration = it },
             onOpenSettings = { screen = Screen.SETTINGS },
             onBack = { screen = Screen.SETUP },
             onStart = {
@@ -504,6 +505,29 @@ fun PauseRoot(
             alwaysApps = alwaysApps,
             selected = selected,
             sessionEnd = sessionEnd,
+            onExtend = { extra ->
+                val currentEnd = store.sessionEndEpochMs
+                if (extra.isValid && currentEnd > System.currentTimeMillis()) {
+                    val nextEnd = currentEnd + extra.totalMinutes * 60_000L
+                    store.sessionEndEpochMs = nextEnd
+                    sessionEnd = nextEnd
+                }
+            },
+            onRemoveApp = { pkg ->
+                if (
+                    sessionEnd > System.currentTimeMillis() &&
+                    pkg in selected &&
+                    pkg !in appsRepository.alwaysAllowedPackages()
+                ) {
+                    val nextSelected = selected - pkg
+                    selected = nextSelected
+                    store.selectedPackages = nextSelected
+                    manualSelected = nextSelected
+                    store.manualSelectedPackages = nextSelected
+                    activeSavedSetName = null
+                    store.activeSavedSetName = null
+                }
+            },
             testModeEnabled = testModeEnabled,
             serviceUnresponsive = serviceUnresponsive,
             accessibilityDisabled = !accessibilityEnabled,
@@ -2714,6 +2738,7 @@ private fun ReviewScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     duration: PauseDuration,
+    onDurationChange: (PauseDuration) -> Unit,
     onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -2796,7 +2821,7 @@ private fun ReviewScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            "После запуска изменить время и список приложений нельзя.",
+                            "Во время Паузы можно продлить её и убрать приложения из доступных. Добавлять приложения и завершать Паузу досрочно нельзя.",
                             modifier = Modifier.weight(1f),
                             color = Color(0xFF8E2B22),
                             fontWeight = FontWeight.SemiBold,
@@ -2839,7 +2864,12 @@ private fun ReviewScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(6.dp))
+                    DurationPicker(
+                        duration = duration,
+                        onChange = onDurationChange
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         "Доступные приложения",
                         color = PauseMuted,
@@ -2869,7 +2899,7 @@ private fun ReviewScreen(
             }
 
             Spacer(Modifier.height(14.dp))
-            HoldButton(onConfirmed = onStart)
+            HoldButton(onConfirmed = onStart, enabled = duration.isValid)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onBack,
@@ -2889,6 +2919,8 @@ private fun ActiveScreen(
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
     sessionEnd: Long,
+    onExtend: (PauseDuration) -> Unit,
+    onRemoveApp: (String) -> Unit,
     testModeEnabled: Boolean,
     serviceUnresponsive: Boolean,
     accessibilityDisabled: Boolean,
@@ -2905,6 +2937,10 @@ private fun ActiveScreen(
     }
     var tapCount by remember { mutableIntStateOf(0) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
+    var showExtendDialog by remember { mutableStateOf(false) }
+    var extension by remember { mutableStateOf(PauseDuration(hours = 0, minutes = 30)) }
+    var showRemoveDialog by remember { mutableStateOf(false) }
+    var appToRemove by remember { mutableStateOf<InstalledApp?>(null) }
 
     LaunchedEffect(sessionEnd) {
         while (true) {
@@ -2919,6 +2955,11 @@ private fun ActiveScreen(
 
     val shortcuts = remember(apps, alwaysApps, selected) {
         alwaysApps + apps.filter { it.packageName in selected }
+    }
+    val removableApps = remember(apps, alwaysApps, selected) {
+        val alwaysAllowed = alwaysApps.map { it.packageName }.toSet()
+        apps.filter { it.packageName in selected && it.packageName !in alwaysAllowed }
+            .distinctBy { it.packageName }
     }
 
     val defaultFlingBehavior = ScrollableDefaults.flingBehavior()
@@ -3095,7 +3136,31 @@ private fun ActiveScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 18.dp)
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        extension = PauseDuration(hours = 0, minutes = 30)
+                        showExtendDialog = true
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Text("Продлить", maxLines = 1, fontSize = 14.sp)
+                }
+                OutlinedButton(
+                    onClick = { showRemoveDialog = true },
+                    enabled = removableApps.isNotEmpty(),
+                    modifier = Modifier.weight(1.25f),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
+                ) {
+                    Text("Убрать приложение", maxLines = 1, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -3119,6 +3184,118 @@ private fun ActiveScreen(
                     )
                 }
             }
+        }
+
+        if (showExtendDialog) {
+            AlertDialog(
+                onDismissRequest = { showExtendDialog = false },
+                title = { Text("Продлить паузу") },
+                text = {
+                    Column {
+                        Text(
+                            "Выберите, сколько времени добавить к уже установленному сроку.",
+                            color = PauseMuted,
+                            fontSize = 14.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        DurationPicker(
+                            duration = extension,
+                            onChange = { extension = it }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (extension.isValid) {
+                                onExtend(extension)
+                                showExtendDialog = false
+                            }
+                        },
+                        enabled = extension.isValid
+                    ) {
+                        Text("Добавить " + formatDuration(extension))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExtendDialog = false }) {
+                        Text("Отмена")
+                    }
+                }
+            )
+        }
+
+        if (showRemoveDialog) {
+            AlertDialog(
+                onDismissRequest = { showRemoveDialog = false },
+                title = { Text("Убрать приложение") },
+                text = {
+                    Column {
+                        Text(
+                            "Приложение станет недоступным до окончания Паузы. Добавить его обратно сейчас нельзя.",
+                            color = PauseMuted,
+                            fontSize = 14.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)
+                        ) {
+                            items(
+                                items = removableApps,
+                                key = { it.packageName }
+                            ) { app ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = app.label,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    TextButton(onClick = {
+                                        appToRemove = app
+                                        showRemoveDialog = false
+                                    }) {
+                                        Text("Убрать")
+                                    }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showRemoveDialog = false }) {
+                        Text("Закрыть")
+                    }
+                }
+            )
+        }
+
+        val removing = appToRemove
+        if (removing != null) {
+            AlertDialog(
+                onDismissRequest = { appToRemove = null },
+                title = { Text("Убрать «" + removing.label + "»?") },
+                text = {
+                    Text("До конца Паузы приложение будет заблокировано. Вернуть его в список сейчас нельзя.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onRemoveApp(removing.packageName)
+                        appToRemove = null
+                    }) {
+                        Text("Убрать из списка")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { appToRemove = null }) {
+                        Text("Отмена")
+                    }
+                }
+            )
         }
     }
 }
@@ -3339,12 +3516,13 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun HoldButton(
     onConfirmed: () -> Unit,
+    enabled: Boolean = true,
 ) {
     var pressing by remember { mutableStateOf(false) }
     val holdProgress = remember { Animatable(0f) }
 
-    LaunchedEffect(pressing) {
-        if (pressing) {
+    LaunchedEffect(pressing, enabled) {
+        if (pressing && enabled) {
             holdProgress.snapTo(0f)
             holdProgress.animateTo(
                 targetValue = 1f,
@@ -3353,7 +3531,7 @@ private fun HoldButton(
                     easing = LinearEasing,
                 ),
             )
-            if (pressing) {
+            if (pressing && enabled) {
                 pressing = false
                 onConfirmed()
             }
@@ -3375,15 +3553,17 @@ private fun HoldButton(
                 ambientColor = Color(0xFF184B34).copy(alpha = .18f)
             )
             .clip(RoundedCornerShape(19.dp))
-            .background(Color(0xFF1E6842))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        pressing = true
-                        tryAwaitRelease()
-                        pressing = false
-                    }
-                )
+            .background(if (enabled) Color(0xFF1E6842) else Color(0xFF9BA79E))
+            .pointerInput(enabled) {
+                if (enabled) {
+                    detectTapGestures(
+                        onPress = {
+                            pressing = true
+                            tryAwaitRelease()
+                            pressing = false
+                        }
+                    )
+                }
             }
     ) {
         if (pressing || holdProgress.value > 0f) {
