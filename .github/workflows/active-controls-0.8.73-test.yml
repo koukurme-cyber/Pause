@@ -38,7 +38,6 @@ jobs:
           sed -i '/getByName("debug") {/a\            applicationIdSuffix = ".test"' app/build.gradle.kts
           sed -i 's/versionCode = 11/versionCode = 123/' app/build.gradle.kts
           sed -i 's/versionName = "0.6.3"/versionName = "0.8.73-test"/' app/build.gradle.kts
-          sed -i 's/android:label="Пауза"/android:label="Пауза Test"/' app/src/main/AndroidManifest.xml
       - name: Unit tests
         run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
       - name: Build test APK

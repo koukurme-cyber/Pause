@@ -2851,14 +2851,16 @@ private fun ReviewScreen(
                 }
             }
 
+            // Keep the review picker in a fixed-height card, outside the
+            // weighted launcher grid: the grid can shrink on smaller screens.
             Spacer(Modifier.height(10.dp))
             Card(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
                 shape = RoundedCornerShape(22.dp),
                 border = BorderStroke(1.dp, Color(0xFFE2E4DD))
             ) {
-                Column(Modifier.fillMaxSize().padding(15.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 8.dp)) {
                     Text(
                         "Пауза: " + formatDuration(duration),
                         fontSize = 18.sp,
@@ -2869,7 +2871,16 @@ private fun ReviewScreen(
                         duration = duration,
                         onChange = onDurationChange
                     )
-                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E4DD))
+            ) {
+                Column(Modifier.fillMaxSize().padding(15.dp)) {
                     Text(
                         "Доступные приложения",
                         color = PauseMuted,
