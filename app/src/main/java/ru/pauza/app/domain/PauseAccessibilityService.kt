@@ -1,13 +1,16 @@
 package ru.pauza.app.domain
 
 import android.accessibilityservice.AccessibilityService
+import android.app.ActivityOptions
 import android.app.AlertDialog
+import android.app.PendingIntent
 import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -706,20 +709,60 @@ class PauseAccessibilityService : AccessibilityService() {
         return event?.packageName?.toString()
     }
 
-    private fun returnToPause() {
+    private fun returnToPause(fromOverlayTap: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastReturnAt < RETURN_DEBOUNCE_MS) return
+        // A user tap must never be discarded by the watchdog debounce.
+        if (!fromOverlayTap && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
 
-        startActivity(
-            Intent(this, MainActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+        }
+
+        if (!fromOverlayTap) {
+            // The automatic return remains unchanged. Android may deny a
+            // background activity launch without throwing an exception.
+            runCatching { startActivity(intent) }.onFailure {
+                Log.w("PauseProtection", "Automatic return to Pause failed", it)
             }
-        )
+            return
+        }
+
+        // If Android suppressed the automatic launch after an external link
+        // opened another task, the visible accessibility overlay gives the
+        // user an explicit, reliable path back to the active Pause screen.
+        // Opt in on both sides of PendingIntent for Android 14/15+.
+        val creatorOptions = if (Build.VERSION.SDK_INT >= 35) {
+            ActivityOptions.makeBasic().apply {
+                pendingIntentCreatorBackgroundActivityStartMode =
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            }.toBundle()
+        } else null
+        val senderOptions = if (Build.VERSION.SDK_INT >= 34) {
+            ActivityOptions.makeBasic().apply {
+                pendingIntentBackgroundActivityStartMode =
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            }.toBundle()
+        } else null
+
+        runCatching {
+            PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                creatorOptions
+            ).send(senderOptions)
+        }.onFailure { error ->
+            Log.w("PauseProtection", "Overlay-tap return to Pause failed", error)
+            runCatching { startActivity(intent) }.onFailure {
+                Log.e("PauseProtection", "Fallback return to Pause failed", it)
+            }
+        }
     }
 
     private fun showOverlay(sessionEnd: Long) {
@@ -730,7 +773,7 @@ class PauseAccessibilityService : AccessibilityService() {
             setBackgroundColor(Color.rgb(247, 248, 244))
             isClickable = true
             isFocusable = true
-            setOnClickListener { returnToPause() }
+            setOnClickListener { returnToPause(fromOverlayTap = true) }
         }
 
         val timer = TextView(this).apply {
