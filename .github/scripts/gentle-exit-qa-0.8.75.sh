@@ -94,7 +94,7 @@ for i in $(seq 1 50); do
 done
 adb shell dumpsys accessibility > "$DIR/accessibility.txt" || true
 adb shell settings get secure enabled_accessibility_services > "$DIR/enabled-services.txt" || true
-if ! grep -Fq PauseAccessibilityService "$DIR/results.txt"; then
+if ! grep -Fq "PASS: accessibility bound" "$DIR/results.txt"; then
   echo "Accessibility never bound" >> "$DIR/results.txt"
   fail "Accessibility service not enabled"
 fi
