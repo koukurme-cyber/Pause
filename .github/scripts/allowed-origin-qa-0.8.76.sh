@@ -175,6 +175,9 @@ if overlay_visible; then fail "Phone incorrectly blocked"; fi
 echo "PASS: allowed Phone" | tee -a "$DIR/results.txt"
 snapshot phone
 
+# Explicitly return to Pause first; the earlier Phone session is finished.
+adb shell am start -W -n "$PKG/.MainActivity" >/dev/null 2>&1 || true
+sleep 1
 adb shell input keyevent KEYCODE_APP_SWITCH
 sleep 2
 snapshot recents
