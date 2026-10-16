@@ -150,6 +150,15 @@ if ! grep -Fq "PASS: accessibility bound" "$DIR/results.txt"; then
 fi
 adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
 sleep 3
+# Pixel Launcher can show a first-boot ANR dialog above an otherwise healthy Pause.
+for i in $(seq 1 4); do
+  if tap_ui "Close app"; then
+    echo "Dismissed Pixel Launcher ANR" >> "$DIR/results.txt"
+    sleep 1
+  else
+    break
+  fi
+done
 snapshot initial
 has_text "Осталось" || fail "Active Pause not shown"
 if has_text "Служба блокировки отключена"; then fail "Accessibility service disabled in UI"; fi
