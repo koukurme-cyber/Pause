@@ -698,6 +698,17 @@ class PauseAccessibilityService : AccessibilityService() {
         // event while another application's window is already focused again.
         val usagePackage = UsageAccessMonitor.foregroundPackage(this)
         if (!usagePackage.isNullOrBlank()) {
+            // Some Android 13/OEM usage-event streams lag behind the visible
+            // app. A genuinely focused different application must win over a
+            // stale "Pause is foreground" report, or blocking can be bypassed.
+            if (
+                usagePackage == packageName &&
+                !currentApplication.isNullOrBlank() &&
+                currentApplication != packageName &&
+                currentApplication != SYSTEM_UI_PACKAGE
+            ) {
+                return currentApplication
+            }
             if (
                 usagePackage in launcherPackages &&
                 !currentApplication.isNullOrBlank() &&
