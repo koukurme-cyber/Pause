@@ -83,15 +83,65 @@ adb shell run-as "$PKG" cp /data/local/tmp/qa-prefs.xml "/data/user/0/$PKG/share
 adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
 adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
 adb shell cmd appops set "$PKG" GET_USAGE_STATS allow
-adb shell settings --user 0 put secure enabled_accessibility_services "$SERVICE"
-adb shell settings --user 0 put secure accessibility_enabled 1
-for i in $(seq 1 50); do
-  if adb shell dumpsys accessibility | grep -A12 "Bound services:" | grep -Fq PauseAccessibilityService; then
+adb shell settings put secure enabled_accessibility_services "$SERVICE"
+adb shell settings put secure accessibility_enabled 1
+adb shell settings get secure enabled_accessibility_services > "$DIR/secure-after-command.txt" || true
+is_bound() {
+  adb shell dumpsys accessibility | grep -A12 "Bound services:" | grep -Fq PauseAccessibilityService
+}
+for i in $(seq 1 12); do
+  if is_bound; then
     echo "PASS: accessibility bound" | tee -a "$DIR/results.txt"
     break
   fi
   sleep 0.4
 done
+tap_ui() {
+  dump_ui
+  local xy
+  xy=$(python3 - "$DIR/ui.xml" "$1" <<'PY'
+import sys,re,xml.etree.ElementTree as E
+try: root=E.parse(sys.argv[1]).getroot()
+except Exception: sys.exit(1)
+target=sys.argv[2].casefold()
+for n in root.iter("node"):
+    if target in (n.get("text","").casefold(),n.get("content-desc","").casefold()):
+        m=re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",n.get("bounds",""))
+        if m:
+            a=list(map(int,m.groups()))
+            print((a[0]+a[2])//2,(a[1]+a[3])//2)
+            sys.exit(0)
+sys.exit(1)
+PY
+  ) || return 1
+  adb shell input tap $xy
+}
+if ! is_bound; then
+  adb shell am start -W -a android.settings.ACCESSIBILITY_SETTINGS >/dev/null 2>&1 || true
+  sleep 2
+  snapshot accessibility-settings
+  for i in $(seq 1 4); do
+    if tap_ui "Пауза"; then break; fi
+    tap_ui "Downloaded apps" || tap_ui "Installed apps" || true
+    sleep 1
+    if tap_ui "Пауза"; then break; fi
+    adb shell input swipe 530 1850 530 620 380
+    sleep 1
+  done
+  snapshot accessibility-app-settings
+  tap_ui "Use Пауза" || tap_ui "Use Pauza" || tap_ui "Пауза" || true
+  sleep 1
+  tap_ui "Allow" || tap_ui "Разрешить" || tap_ui "OK" || true
+  sleep 1
+  snapshot accessibility-enabled
+  for i in $(seq 1 18); do
+    if is_bound; then
+      echo "PASS: accessibility bound via settings UI" | tee -a "$DIR/results.txt"
+      break
+    fi
+    sleep 0.5
+  done
+fi
 adb shell dumpsys accessibility > "$DIR/accessibility.txt" || true
 adb shell settings get secure enabled_accessibility_services > "$DIR/enabled-services.txt" || true
 if ! grep -Fq "PASS: accessibility bound" "$DIR/results.txt"; then
