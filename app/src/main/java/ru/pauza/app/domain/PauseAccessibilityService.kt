@@ -740,37 +740,49 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // If Android suppressed the automatic launch after an external link
-        // opened another task, the visible accessibility overlay gives the
-        // user an explicit, reliable path back to the active Pause screen.
-        // Opt in on both sides of PendingIntent for Android 14/15+.
-        val creatorOptions = if (Build.VERSION.SDK_INT >= 35) {
-            ActivityOptions.makeBasic().apply {
-                pendingIntentCreatorBackgroundActivityStartMode =
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-            }.toBundle()
-        } else null
-        val senderOptions = if (Build.VERSION.SDK_INT >= 34) {
-            ActivityOptions.makeBasic().apply {
-                pendingIntentBackgroundActivityStartMode =
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-            }.toBundle()
-        } else null
-
-        runCatching {
-            PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                creatorOptions
-            ).send(senderOptions)
-        }.onFailure { error ->
-            Log.w("PauseProtection", "Overlay-tap return to Pause failed", error)
-            runCatching { startActivity(intent) }.onFailure {
-                Log.e("PauseProtection", "Fallback return to Pause failed", it)
-            }
+        // Accessibility services may relaunch an activity directly. Try this
+        // first for the tap; Android can silently ignore PendingIntent.send().
+        runCatching { startActivity(intent) }.onFailure {
+            Log.w("PauseProtection", "Direct overlay-tap return failed", it)
         }
+
+        // Some Android 14/15 builds refuse or delay the direct background
+        // launch. Retry via PendingIntent only if the notice remains visible.
+        handler.postDelayed({
+            if (overlay == null || store.sessionEndEpochMs <= System.currentTimeMillis()) {
+                return@postDelayed
+            }
+            val creatorOptions = if (Build.VERSION.SDK_INT >= 35) {
+                ActivityOptions.makeBasic().apply {
+                    pendingIntentCreatorBackgroundActivityStartMode =
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                }.toBundle()
+            } else null
+            val senderOptions = if (Build.VERSION.SDK_INT >= 34) {
+                ActivityOptions.makeBasic().apply {
+                    pendingIntentBackgroundActivityStartMode =
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                }.toBundle()
+            } else null
+            runCatching {
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    creatorOptions
+                ).send(senderOptions)
+            }.onFailure {
+                Log.w("PauseProtection", "PendingIntent overlay-tap retry failed", it)
+            }
+        }, 420L)
+        handler.postDelayed({
+            if (overlay != null && store.sessionEndEpochMs > System.currentTimeMillis()) {
+                runCatching { startActivity(intent) }.onFailure {
+                    Log.e("PauseProtection", "Final overlay-tap return retry failed", it)
+                }
+            }
+        }, 1_500L)
     }
 
     private fun showOverlay(sessionEnd: Long): Boolean {
