@@ -6,7 +6,7 @@ on:
       - external-link-return-0.8.74-test
     paths:
       - "app/**"
-      - ".github/workflows/active-controls-0.8.74-test.yml"
+      - ".github/workflows/external-link-return-0.8.74-test.yml"
   workflow_dispatch:
 
 permissions:
