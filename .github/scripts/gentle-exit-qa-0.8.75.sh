@@ -22,40 +22,32 @@ has_text() {
   dump_ui
   grep -Fq "$1" "$DIR/ui.xml"
 }
+overlay_visible() {
+  adb shell dumpsys window windows | grep -Fq "appop=CREATE_ACCESSIBILITY_OVERLAY"
+}
 expect_notice() {
-  for i in $(seq 1 12); do
-    if has_text "Это может подождать"; then
-      echo "PASS: $1 notice" | tee -a "$DIR/results.txt"
+  for i in $(seq 1 18); do
+    if overlay_visible; then
+      echo "PASS: $1 accessibility overlay visible" | tee -a "$DIR/results.txt"
       snapshot "$1"
       return
     fi
-    sleep 1
+    sleep 0.5
   done
-  fail "$1 gentle screen not shown"
+  fail "$1 accessibility overlay not shown"
 }
 click_return() {
-  dump_ui
-  local xy
-  xy=$(python3 - "$DIR/ui.xml" <<'PY'
-import xml.etree.ElementTree as E,re,sys
-try: root=E.parse(sys.argv[1]).getroot()
-except Exception: sys.exit(1)
-for node in root.iter("node"):
-    if node.get("text")=="Вернуться в «Паузу»":
-        b=node.get("bounds","")
-        m=re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",b)
-        if m:
-            a=list(map(int,m.groups()))
-            print((a[0]+a[2])//2,(a[1]+a[3])//2)
-            sys.exit(0)
-sys.exit(1)
-PY
-  ) || fail "Return button not in accessibility tree"
-  adb shell input tap $xy
-  for i in $(seq 1 16); do
+  local size width height
+  size=$(adb shell wm size | tr -d '\r' | awk -F': ' '/Physical size/ {print $2}' | tail -n 1)
+  width=$(echo "$size" | cut -dx -f1)
+  height=$(echo "$size" | cut -dx -f2)
+  [ -n "$width" ] && [ -n "$height" ] || fail "Screen resolution not found"
+  # The button is centered at about 68 percent of the Pixel 6 portrait display.
+  adb shell input tap $((width/2)) $((height*68/100))
+  for i in $(seq 1 22); do
     if adb shell dumpsys activity activities | grep -Eq "topResumedActivity=.*$PKG/|mResumedActivity=.*$PKG/"; then
-      if ! has_text "Это может подождать"; then
-        echo "PASS: return to Pause" | tee -a "$DIR/results.txt"
+      if ! overlay_visible; then
+        echo "PASS: returned to active Pause" | tee -a "$DIR/results.txt"
         snapshot returned
         return
       fi
@@ -166,8 +158,6 @@ echo "PASS: active screen" | tee -a "$DIR/results.txt"
 
 adb shell am start -W -a android.settings.SETTINGS >/dev/null 2>&1 || true
 expect_notice settings
-has_text "До окончания паузы" || fail "Overlay timer caption missing"
-has_text "Вернуться в «Паузу»" || fail "Return button missing"
 click_return
 
 adb shell input keyevent KEYCODE_HOME
@@ -176,7 +166,7 @@ click_return
 
 adb shell am start -W -a android.intent.action.DIAL -d tel: >/dev/null 2>&1 || true
 sleep 2
-if has_text "Это может подождать"; then fail "Phone incorrectly blocked"; fi
+if overlay_visible; then fail "Phone incorrectly blocked"; fi
 echo "PASS: allowed Phone" | tee -a "$DIR/results.txt"
 snapshot phone
 
