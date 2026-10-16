@@ -8,6 +8,7 @@ import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
@@ -24,8 +25,12 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import ru.pauza.app.MainActivity
+import ru.pauza.app.R
 import ru.pauza.app.data.InstalledAppsRepository
 import ru.pauza.app.data.PauseStore
 import java.util.Locale
@@ -409,8 +414,11 @@ class PauseAccessibilityService : AccessibilityService() {
                 "general blocker package=$foregroundPackage navigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
             )
         }
-        showOverlay(end)
-        returnToPause()
+        // A disallowed foreground is covered by the calm Pause screen.
+        // Keep it visible until the user chooses to return; automatic
+        // relaunching would dismiss the message before it can be read.
+        // If an OEM rejects the accessibility overlay, preserve enforcement.
+        if (!showOverlay(end)) returnToPause()
     }
 
     private fun beginShortVideoRedirect(
@@ -765,33 +773,138 @@ class PauseAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun showOverlay(sessionEnd: Long) {
+    private fun showOverlay(sessionEnd: Long): Boolean {
         updateOverlayTimer(sessionEnd)
-        if (overlay != null) return
+        if (overlay != null) return true
+
+        fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
+        fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(radius).toFloat()
+            setColor(color)
+        }
+        fun text(
+            value: String,
+            size: Float,
+            color: Int,
+            bold: Boolean = false,
+        ) = TextView(this).apply {
+            this.text = value
+            textSize = size
+            setTextColor(color)
+            gravity = Gravity.CENTER
+            if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
 
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(247, 248, 244))
-            isClickable = true
+            isClickable = true  // Consume touches: nothing reaches the blocked app.
             isFocusable = true
-            setOnClickListener { returnToPause(fromOverlayTap = true) }
         }
 
-        val timer = TextView(this).apply {
-            setTextColor(Color.rgb(30, 36, 32))
-            textSize = 52f
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create(
-                android.graphics.Typeface.DEFAULT,
-                android.graphics.Typeface.NORMAL
-            )
+        val scroller = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
         }
-        overlayTimer = timer
         root.addView(
-            timer,
+            scroller,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+        )
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(32), dp(28), dp(32))
+        }
+        scroller.addView(
+            content,
+            ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val leafBackground = FrameLayout(this).apply {
+            background = rounded(Color.rgb(229, 237, 227), 22)
+        }
+        content.addView(
+            leafBackground,
+            LinearLayout.LayoutParams(dp(76), dp(76)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+        leafBackground.addView(
+            ImageView(this).apply {
+                setImageResource(R.drawable.ic_pauza_leaf)
+                contentDescription = null
+            },
+            FrameLayout.LayoutParams(dp(43), dp(43), Gravity.CENTER)
+        )
+
+        val title = text("Это может подождать", 26f, Color.rgb(38, 56, 42), true)
+        content.addView(
+            title,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(25) }
+        )
+
+        val message = text(
+            "Вы решили сделать паузу. Она продолжается, даже если вы случайно открыли что-то лишнее.",
+            15f,
+            Color.rgb(100, 114, 104)
+        ).apply {
+            setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        content.addView(
+            message,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(14) }
+        )
+
+        val caption = text("До окончания паузы", 13f, Color.rgb(100, 114, 104))
+        content.addView(
+            caption,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(30) }
+        )
+
+        val timer = text("", 38f, Color.rgb(38, 56, 42), true).apply {
+            setSingleLine(true)
+        }
+        overlayTimer = timer
+        content.addView(
+            timer,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        )
+
+        val returnButton = text(
+            "Вернуться в «Паузу»",
+            16f,
+            Color.rgb(52, 91, 61),
+            true
+        ).apply {
+            background = rounded(Color.rgb(229, 237, 227), 16)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { returnToPause(fromOverlayTap = true) }
+        }
+        content.addView(
+            returnButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(56)
+            ).apply { topMargin = dp(29) }
         )
 
         val params = WindowManager.LayoutParams(
@@ -803,11 +916,15 @@ class PauseAccessibilityService : AccessibilityService() {
             PixelFormat.OPAQUE
         )
 
-        runCatching {
+        return runCatching {
             getSystemService(WindowManager::class.java).addView(root, params)
             overlay = root
             updateOverlayTimer(sessionEnd)
-        }
+            true
+        }.onFailure {
+            Log.e("PauseProtection", "Cannot display blocked-app notice", it)
+            overlayTimer = null
+        }.getOrDefault(false)
     }
 
     private fun updateOverlayTimer(sessionEnd: Long) {
