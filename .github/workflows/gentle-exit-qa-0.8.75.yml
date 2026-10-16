@@ -4,6 +4,7 @@ on:
     branches:
       - gentle-exit-screen-0.8.75-test
     paths:
+      - "app/**"
       - ".github/scripts/gentle-exit-qa-0.8.75.sh"
       - ".github/workflows/gentle-exit-qa-0.8.75.yml"
   workflow_dispatch:
