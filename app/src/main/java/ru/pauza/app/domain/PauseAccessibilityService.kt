@@ -79,6 +79,9 @@ class PauseAccessibilityService : AccessibilityService() {
     private var resumeProtectionAt = 0L
     private var overlay: View? = null
     private var overlayTimer: TextView? = null
+    private var lastAllowedForegroundPackage: String? = null
+    private var blockedOriginPackage: String? = null
+    private var returnAttemptId = 0
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -199,10 +202,12 @@ class PauseAccessibilityService : AccessibilityService() {
         // System UI itself is allowed, but a launcher is not: pressing Home may
         // briefly show the normal desktop, then Usage Access detects that launcher
         // as foreground and returns the user to the active Pause.
-        if (
-            foregroundPackage == packageName ||
-            foregroundPackage == SYSTEM_UI_PACKAGE
-        ) {
+        if (foregroundPackage == packageName) {
+            lastAllowedForegroundPackage = null
+            hideOverlay()
+            return
+        }
+        if (foregroundPackage == SYSTEM_UI_PACKAGE) {
             hideOverlay()
             return
         }
@@ -212,6 +217,7 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            lastAllowedForegroundPackage = foregroundPackage
             hideOverlay()
 
             if (store.blockShortVideos && ShortVideoDetector.isSupportedPackage(foregroundPackage)) {
@@ -785,9 +791,115 @@ class PauseAccessibilityService : AccessibilityService() {
         }, 1_500L)
     }
 
+    /**
+     * Go back to the previously allowed app; re-open it only if Back failed.
+     * Fall back to Pause after a bounded attempt to preserve an escape route.
+     */
+    private fun returnFromBlockedApp() {
+        val target = blockedOriginPackage?.takeIf {
+            it in store.selectedPackages + appsRepository.alwaysAllowedPackages()
+        }
+        if (target == null) {
+            ShortVideoDiagnostics.log(this, "PauseReturn", "no origin; opening Pause")
+            returnToPause(fromOverlayTap = true)
+            return
+        }
+
+        val attempt = ++returnAttemptId
+        ShortVideoDiagnostics.log(this, "PauseReturn", "return tapped target=$target")
+        performGlobalAction(GLOBAL_ACTION_BACK)
+
+        handler.postDelayed({
+            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (resolveForegroundPackage(null) == target) {
+                hideOverlay()
+                return@postDelayed
+            }
+
+            val intent = packageManager.getLaunchIntentForPackage(target)
+                ?: if (target in appsRepository.alwaysAllowedPackages()) {
+                    Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:"))
+                } else null
+            if (intent != null) {
+                intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                runCatching { startActivity(intent) }.onFailure {
+                    ShortVideoDiagnostics.log(
+                        this, "PauseReturn",
+                        "direct launch failed target=$target error=${it.javaClass.simpleName}"
+                    )
+                }
+            }
+        }, 700L)
+
+        handler.postDelayed({
+            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (resolveForegroundPackage(null) == target) {
+                hideOverlay()
+                return@postDelayed
+            }
+
+            val intent = packageManager.getLaunchIntentForPackage(target)
+            if (intent != null) {
+                intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                val creatorOptions = if (Build.VERSION.SDK_INT >= 35) {
+                    ActivityOptions.makeBasic().apply {
+                        pendingIntentCreatorBackgroundActivityStartMode =
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    }.toBundle()
+                } else null
+                val senderOptions = if (Build.VERSION.SDK_INT >= 34) {
+                    ActivityOptions.makeBasic().apply {
+                        pendingIntentBackgroundActivityStartMode =
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    }.toBundle()
+                } else null
+                runCatching {
+                    PendingIntent.getActivity(
+                        this,
+                        target.hashCode(),
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        creatorOptions
+                    ).send(senderOptions)
+                }.onFailure {
+                    ShortVideoDiagnostics.log(
+                        this, "PauseReturn",
+                        "pending launch failed target=$target error=${it.javaClass.simpleName}"
+                    )
+                }
+            }
+        }, 1650L)
+
+        handler.postDelayed({
+            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (resolveForegroundPackage(null) == target) {
+                hideOverlay()
+                return@postDelayed
+            }
+            ShortVideoDiagnostics.log(this, "PauseReturn", "fallback to Pause target=$target")
+            returnToPause(fromOverlayTap = true)
+        }, 3200L)
+    }
+
     private fun showOverlay(sessionEnd: Long): Boolean {
         updateOverlayTimer(sessionEnd)
         if (overlay != null) return true
+
+        blockedOriginPackage = lastAllowedForegroundPackage?.takeIf { target ->
+            target in store.selectedPackages + appsRepository.alwaysAllowedPackages()
+        }
+        ShortVideoDiagnostics.log(
+            this, "PauseReturn",
+            "blocked foreground=${resolveForegroundPackage(null)} target=$blockedOriginPackage"
+        )
 
         fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
         fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
@@ -900,8 +1012,15 @@ class PauseAccessibilityService : AccessibilityService() {
             ).apply { topMargin = dp(6) }
         )
 
+        val previousAppLabel = blockedOriginPackage?.let { target ->
+            runCatching {
+                val info = packageManager.getApplicationInfo(target, 0)
+                packageManager.getApplicationLabel(info).toString()
+            }.getOrNull()
+        }?.take(24)
         val returnButton = text(
-            "Вернуться в «Паузу»",
+            if (blockedOriginPackage == null) "Вернуться в «Паузу»"
+            else "Вернуться в ${previousAppLabel ?: "приложение"}",
             16f,
             Color.rgb(52, 91, 61),
             true
@@ -909,7 +1028,7 @@ class PauseAccessibilityService : AccessibilityService() {
             background = rounded(Color.rgb(229, 237, 227), 16)
             isClickable = true
             isFocusable = true
-            setOnClickListener { returnToPause(fromOverlayTap = true) }
+            setOnClickListener { returnFromBlockedApp() }
         }
         content.addView(
             returnButton,
@@ -950,6 +1069,8 @@ class PauseAccessibilityService : AccessibilityService() {
         }
         overlay = null
         overlayTimer = null
+        blockedOriginPackage = null
+        returnAttemptId++
     }
 
     private fun hideShortNotice() {
