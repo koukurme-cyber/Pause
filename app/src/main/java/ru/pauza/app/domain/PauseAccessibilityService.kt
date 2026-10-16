@@ -820,9 +820,9 @@ class PauseAccessibilityService : AccessibilityService() {
         }
         scroller.addView(
             content,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.MATCH_PARENT
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
 
