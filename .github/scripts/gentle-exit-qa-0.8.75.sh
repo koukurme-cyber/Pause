@@ -160,6 +160,11 @@ adb shell am start -W -a android.settings.SETTINGS >/dev/null 2>&1 || true
 expect_notice settings
 click_return
 
+echo "External web link transition"
+adb shell am start -W -a android.intent.action.VIEW -d https://example.com >/dev/null 2>&1 || true
+expect_notice external-link
+click_return
+
 adb shell input keyevent KEYCODE_HOME
 expect_notice home
 click_return
