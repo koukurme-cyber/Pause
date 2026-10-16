@@ -80,13 +80,29 @@ adb push /tmp/qa-prefs.xml /data/local/tmp/qa-prefs.xml >/dev/null
 adb shell chmod 644 /data/local/tmp/qa-prefs.xml
 adb shell run-as "$PKG" mkdir -p "/data/user/0/$PKG/shared_prefs"
 adb shell run-as "$PKG" cp /data/local/tmp/qa-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
+adb shell cmd appops set "$PKG" ACCESS_RESTRICTED_SETTINGS allow || true
 adb shell cmd appops set "$PKG" GET_USAGE_STATS allow
 adb shell settings --user 0 put secure enabled_accessibility_services "$SERVICE"
 adb shell settings --user 0 put secure accessibility_enabled 1
+for i in $(seq 1 50); do
+  if adb shell dumpsys accessibility | grep -A12 "Bound services:" | grep -Fq PauseAccessibilityService; then
+    echo "PASS: accessibility bound" | tee -a "$DIR/results.txt"
+    break
+  fi
+  sleep 0.4
+done
+adb shell dumpsys accessibility > "$DIR/accessibility.txt" || true
+adb shell settings get secure enabled_accessibility_services > "$DIR/enabled-services.txt" || true
+if ! grep -Fq PauseAccessibilityService "$DIR/results.txt"; then
+  echo "Accessibility never bound" >> "$DIR/results.txt"
+  fail "Accessibility service not enabled"
+fi
 adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
 sleep 3
 snapshot initial
 has_text "Осталось" || fail "Active Pause not shown"
+if has_text "Служба блокировки отключена"; then fail "Accessibility service disabled in UI"; fi
 echo "PASS: active screen" | tee -a "$DIR/results.txt"
 
 adb shell am start -W -a android.settings.SETTINGS >/dev/null 2>&1 || true
