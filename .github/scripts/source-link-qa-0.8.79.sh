@@ -245,10 +245,12 @@ click_return_to_allowed "$PHONE_PACKAGE"
 
 echo "Testing REAL link click inside an allowed source app"
 adb shell am start -W -n org.pauza.qa.origin/.OriginActivity > "$DIR/origin-launch.txt"
-sleep 2
+sleep 4
 overlay_visible && fail "allowed source app blocked before opening link"
-has_text "Открыть внешнюю ссылку" || fail "source app not opened"
+adb shell dumpsys activity activities | grep -Fq "org.pauza.qa.origin/" || fail "origin Activity not present after waiting for retries"
 snapshot origin-before-click
+# Android Button capitalizes labels on Pixel; tap_ui compares casefolded
+# strings while the previous case-sensitive has_text assertion did not.
 tap_ui "Открыть внешнюю ссылку" || fail "cannot tap source app's external link button"
 expect_notice source-clicked-external-link
 sleep 2
