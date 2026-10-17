@@ -1168,9 +1168,11 @@ class PauseAccessibilityService : AccessibilityService() {
                 packageManager.getApplicationLabel(info).toString()
             }.getOrNull()
         }?.take(24)
+        val returnLabel = if (blockedOriginPackage == null) "Вернуться в «Паузу»"
+            else "Вернуться в ${previousAppLabel ?: "приложение"}"
+        Log.i("PauseTrace", "notice returnLabel=$returnLabel source=$blockedOriginPackage")
         val returnButton = text(
-            if (blockedOriginPackage == null) "Вернуться в «Паузу»"
-            else "Вернуться в ${previousAppLabel ?: "приложение"}",
+            returnLabel,
             16f,
             Color.rgb(52, 91, 61),
             true
