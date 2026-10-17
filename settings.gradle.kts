@@ -17,3 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "Pauza"
 include(":app")
 include(":qa-shortvideo-fixture")
+include(":qa-link-origin-fixture")
+include(":qa-link-browser-fixture")
