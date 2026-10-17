@@ -56,6 +56,7 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
+    private var launcherCandidateAt = 0L
 
     private var shortVideoNavigating = false
     private var shortVideoBlockedPackage: String? = null
@@ -164,11 +165,30 @@ class PauseAccessibilityService : AccessibilityService() {
         // without displaying the gentle blocked-app notice.
         val foregroundPackage = resolveForegroundPackage(event) ?: return
         if (foregroundPackage in launcherPackages) {
-            hideShortNotice()
-            hideOverlay()
-            returnToPause()
+            // Launcher packages can briefly win the Usage Access race during
+            // a normal app switch. Return only after a *focused* launcher
+            // remains foreground across watchdog ticks.
+            val launcherFocused = windows.any { window ->
+                window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    window.isFocused &&
+                    window.root?.packageName?.toString() in launcherPackages
+            }
+            if (!launcherFocused) {
+                launcherCandidateAt = 0L
+                return
+            }
+            val nowElapsed = SystemClock.elapsedRealtime()
+            if (launcherCandidateAt == 0L) launcherCandidateAt = nowElapsed
+            if (nowElapsed - launcherCandidateAt >= 600L) {
+                launcherCandidateAt = 0L
+                ShortVideoDiagnostics.log(this, "PauseNavigation", "confirmed HOME launcher")
+                hideShortNotice()
+                hideOverlay()
+                returnToPause()
+            }
             return
         }
+        launcherCandidateAt = 0L
 
         // Keep emergency controls, notification shade and power menu
         // accessible. Only a confirmed Recents/Overview surface returns to
@@ -176,7 +196,10 @@ class PauseAccessibilityService : AccessibilityService() {
         if (hasActiveSystemUiSurface(event)) {
             hideShortNotice()
             hideOverlay()
-            if (isRecentsNavigationEvent(event)) returnToPause()
+            if (isRecentsNavigationEvent(event)) {
+                ShortVideoDiagnostics.log(this, "PauseNavigation", "confirmed RECENTS/Overview")
+                returnToPause()
+            }
             return
         }
 
