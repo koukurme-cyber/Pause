@@ -225,11 +225,9 @@ class PauseAccessibilityService : AccessibilityService() {
         // intermediate, still-blocked Activities until the chosen destination
         // has been foregrounded or the bounded grace interval expires.
         if (returnNavigationPendingUntil > SystemClock.elapsedRealtime()) {
-            val visible = resolveForegroundPackage(event)
-            if (visible != returnExpectedPackage) return
-            ShortVideoDiagnostics.log(this, "PauseReturn", "restored destination=$visible")
-            returnNavigationPendingUntil = 0L
-            returnExpectedPackage = null
+            val expected = returnExpectedPackage
+            if (expected == null || !isReturnDestinationVisible(expected)) return
+            completeUserReturn(expected)
         }
 
         // HOME and the launcher-owned Recents screen are navigation,
@@ -937,6 +935,36 @@ class PauseAccessibilityService : AccessibilityService() {
      * Go back to the previously allowed app; re-open it only if Back failed.
      * Fall back to Pause after a bounded attempt to preserve an escape route.
      */
+    // Usage Access may still report the previous allowed app while the
+    // external browser window has focus. Confirm the actual focused Activity
+    // before considering a return complete.
+    private fun isReturnDestinationVisible(target: String): Boolean {
+        val focusedApp = windows.asSequence()
+            .filter {
+                it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    !it.isInPictureInPictureMode && (it.isFocused || it.isActive)
+            }
+            .sortedWith(
+                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
+                    .thenByDescending { it.isActive }
+            )
+            .mapNotNull { it.root?.packageName?.toString() }
+            .firstOrNull()
+        return if (focusedApp != null) focusedApp == target
+        else UsageAccessMonitor.foregroundPackage(this) == target
+    }
+
+    private fun completeUserReturn(target: String) {
+        if (returnExpectedPackage != target) return
+        returnExpectedPackage = null
+        returnNavigationPendingUntil = 0L
+        // Cancel every pending fallback from this attempt. Otherwise a delayed
+        // retry can relaunch Pause after the user has already resumed and even
+        // navigated away from the allowed origin.
+        returnAttemptId++
+        ShortVideoDiagnostics.log(this, "PauseReturn", "destination confirmed=$target; retries canceled")
+    }
+
     private fun returnFromBlockedApp() {
         val target = blockedOriginPackage?.takeIf {
             it in store.selectedPackages + appsRepository.alwaysAllowedPackages()
@@ -958,9 +986,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
         handler.postDelayed({
             if (attempt != returnAttemptId) return@postDelayed
-            if (resolveForegroundPackage(null) == target) {
-                returnNavigationPendingUntil = 0L
-                returnExpectedPackage = null
+            if (isReturnDestinationVisible(target)) {
+                completeUserReturn(target)
                 return@postDelayed
             }
 
@@ -985,9 +1012,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
         handler.postDelayed({
             if (attempt != returnAttemptId) return@postDelayed
-            if (resolveForegroundPackage(null) == target) {
-                returnNavigationPendingUntil = 0L
-                returnExpectedPackage = null
+            if (isReturnDestinationVisible(target)) {
+                completeUserReturn(target)
                 return@postDelayed
             }
 
@@ -1029,9 +1055,8 @@ class PauseAccessibilityService : AccessibilityService() {
 
         handler.postDelayed({
             if (attempt != returnAttemptId) return@postDelayed
-            if (resolveForegroundPackage(null) == target) {
-                returnNavigationPendingUntil = 0L
-                returnExpectedPackage = null
+            if (isReturnDestinationVisible(target)) {
+                completeUserReturn(target)
                 return@postDelayed
             }
             ShortVideoDiagnostics.log(this, "PauseReturn", "fallback to Pause target=$target")
