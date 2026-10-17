@@ -3108,7 +3108,7 @@ private fun CorrectionScreen(
                     showConfirmation = false
                     if (draft != selected) onConfirm(draft)
                 }) {
-                    Text("Подтвердить")
+                    Text("Применить выбор")
                 }
             },
             dismissButton = {
