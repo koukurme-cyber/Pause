@@ -2858,7 +2858,7 @@ private fun ReviewScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            "Во время Паузы можно продлить её и убрать приложения из доступных. Добавлять приложения и завершать Паузу досрочно нельзя.",
+                            "Во время Паузы не получится сократить время и добавить новые приложения.",
                             modifier = Modifier.weight(1f),
                             color = Color(0xFF8E2B22),
                             fontWeight = FontWeight.SemiBold,
