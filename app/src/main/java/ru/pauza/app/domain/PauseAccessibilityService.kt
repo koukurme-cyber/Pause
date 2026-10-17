@@ -159,17 +159,26 @@ class PauseAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Transient Android system surfaces (power menu, shade, Recents, etc.)
-        // are overlays owned by SystemUI. Do not fight them by relaunching Pause.
-        // Once the overlay closes, normal foreground enforcement resumes and any
-        // disallowed app selected from it is caught immediately.
-        if (hasActiveSystemUiSurface(event)) {
+        // HOME and the launcher-owned Recents screen are navigation,
+        // not an attempt to open a blocked application. Return to Pause
+        // without displaying the gentle blocked-app notice.
+        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        if (foregroundPackage in launcherPackages) {
             hideShortNotice()
             hideOverlay()
+            returnToPause()
             return
         }
 
-        val foregroundPackage = resolveForegroundPackage(event) ?: return
+        // Keep emergency controls, notification shade and power menu
+        // accessible. Only a confirmed Recents/Overview surface returns to
+        // Pause directly; do not suppress ordinary SystemUI interaction.
+        if (hasActiveSystemUiSurface(event)) {
+            hideShortNotice()
+            hideOverlay()
+            if (isRecentsNavigationEvent(event)) returnToPause()
+            return
+        }
 
         if (
             store.blockShortVideos &&
@@ -420,7 +429,8 @@ class PauseAccessibilityService : AccessibilityService() {
                 "general blocker package=$foregroundPackage navigating=$shortVideoNavigating blockedPackage=$shortVideoBlockedPackage"
             )
         }
-        // A disallowed foreground is covered by the calm Pause screen.
+        // A disallowed foreground reached from an app or external link is
+        // covered by the calm Pause screen. HOME/RECENTS were handled above.
         // Keep it visible until the user chooses to return; automatic
         // relaunching would dismiss the message before it can be read.
         // If an OEM rejects the accessibility overlay, preserve enforcement.
@@ -650,6 +660,17 @@ class PauseAccessibilityService : AccessibilityService() {
             ?: rootInActiveWindow?.takeIf {
                 it.packageName?.toString() == targetPackage
             }
+
+    private fun isRecentsNavigationEvent(event: AccessibilityEvent?): Boolean {
+        if (event == null) return false
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) return false
+        val eventPackage = event.packageName?.toString() ?: return false
+        if (eventPackage != SYSTEM_UI_PACKAGE && eventPackage !in launcherPackages) return false
+        val screen = event.className?.toString()?.lowercase(Locale.ROOT).orEmpty()
+        return "recents" in screen || "overview" in screen
+    }
 
     private fun hasActiveSystemUiSurface(event: AccessibilityEvent?): Boolean {
         val eventPackage = event?.packageName?.toString()
