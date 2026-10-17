@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.app.PendingIntent
-import android.app.role.RoleManager
 import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -44,36 +43,22 @@ class PauseAccessibilityService : AccessibilityService() {
     private val keyguardManager by lazy { getSystemService(KeyguardManager::class.java) }
     private val powerManager by lazy { getSystemService(PowerManager::class.java) }
 
-    private val launcherPackages by lazy {
+    private val launcherPackages: Set<String> by lazy {
+        // Resolve the chosen HOME handler, not every HOME candidate.
+        // MATCH_ALL included Settings/FallbackHome on Pixel emulators.
         val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val chosen = runCatching {
+            packageManager.resolveActivity(
+                homeIntent, PackageManager.MATCH_DEFAULT_ONLY
+            )?.activityInfo?.packageName
+        }.getOrNull()
 
-        // MATCH_ALL lists *candidates* for HOME, including Android Settings'
-        // FallbackHome. It does not mean these apps are launchers currently in
-        // use, and caused Settings to bypass protection. Read the chosen Home
-        // role holder (Android 10+) instead.
-        val roleHolders = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            runCatching {
-                getSystemService(RoleManager::class.java)
-                    ?.getRoleHolders(RoleManager.ROLE_HOME)
-                    .orEmpty()
-            }.getOrDefault(emptyList())
-        } else {
-            emptyList()
-        }
-
-        val selectedHome = if (roleHolders.isNotEmpty()) {
-            roleHolders
-        } else {
-            listOfNotNull(
-                packageManager.resolveActivity(
-                    homeIntent, PackageManager.MATCH_DEFAULT_ONLY
-                )?.activityInfo?.packageName
-            )
-        }
-
-        // The Settings fallback HOME activity must never turn the entire
-        // Settings app into an exempt launcher.
-        (selectedHome.toSet() - setOf(packageName, "com.android.settings"))
+        // Settings contains FallbackHome; never classify the Settings package
+        // itself as navigation. Without a chosen Home, fail closed instead
+        // of exempting all potential launchers.
+        listOfNotNull(chosen)
+            .filter { it != packageName && it != "com.android.settings" }
+            .toSet()
     }
 
     private var lastReturnAt = 0L
