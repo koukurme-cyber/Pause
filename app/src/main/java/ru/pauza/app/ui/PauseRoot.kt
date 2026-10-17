@@ -294,6 +294,25 @@ fun PauseRoot(
         loading = false
     }
 
+    // ActiveSession's own expiry timer does not run while the one-time editor
+    // occupies the UI. The session must still end normally in this state.
+    LaunchedEffect(screen, sessionEnd) {
+        if (screen == Screen.CORRECTION) {
+            while (screen == Screen.CORRECTION) {
+                if (store.sessionEndEpochMs <= System.currentTimeMillis()) {
+                    blocker.stop()
+                    NotificationSilencer.restoreAfterPause(context, store)
+                    store.clearSession()
+                    sessionEnd = 0L
+                    correctionUsed = false
+                    screen = Screen.SETUP
+                    break
+                }
+                delay(500)
+            }
+        }
+    }
+
     val currentScreen by rememberUpdatedState(screen)
     val currentSelected by rememberUpdatedState(selected)
 
