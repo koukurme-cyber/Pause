@@ -56,7 +56,28 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
-    private var launcherCandidateAt = 0L
+    private val confirmHomeNavigation = Runnable {
+        // Only a real launcher window-state change starts this check. A
+        // transient launcher appearance during app switching does not.
+        val foreground = resolveForegroundPackage(null)
+        val focusedLauncher = windows.any { window ->
+            window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                window.isFocused &&
+                window.root?.packageName?.toString() in launcherPackages
+        }
+        val usageLauncher = UsageAccessMonitor.foregroundPackage(this) in launcherPackages
+        if (foreground in launcherPackages && focusedLauncher && usageLauncher) {
+            ShortVideoDiagnostics.log(this, "PauseNavigation", "HOME confirmed")
+            hideShortNotice()
+            hideOverlay()
+            returnToPause()
+        } else {
+            ShortVideoDiagnostics.log(
+                this, "PauseNavigation",
+                "HOME ignored: foreground=$foreground focused=$focusedLauncher usage=$usageLauncher"
+            )
+        }
+    }
 
     private var shortVideoNavigating = false
     private var shortVideoBlockedPackage: String? = null
@@ -165,30 +186,18 @@ class PauseAccessibilityService : AccessibilityService() {
         // without displaying the gentle blocked-app notice.
         val foregroundPackage = resolveForegroundPackage(event) ?: return
         if (foregroundPackage in launcherPackages) {
-            // Launcher packages can briefly win the Usage Access race during
-            // a normal app switch. Return only after a *focused* launcher
-            // remains foreground across watchdog ticks.
-            val launcherFocused = windows.any { window ->
-                window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
-                    window.isFocused &&
-                    window.root?.packageName?.toString() in launcherPackages
-            }
-            if (!launcherFocused) {
-                launcherCandidateAt = 0L
-                return
-            }
-            val nowElapsed = SystemClock.elapsedRealtime()
-            if (launcherCandidateAt == 0L) launcherCandidateAt = nowElapsed
-            if (nowElapsed - launcherCandidateAt >= 600L) {
-                launcherCandidateAt = 0L
-                ShortVideoDiagnostics.log(this, "PauseNavigation", "confirmed HOME launcher")
-                hideShortNotice()
-                hideOverlay()
-                returnToPause()
+            if (
+                event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                event.packageName?.toString() in launcherPackages
+            ) {
+                handler.removeCallbacks(confirmHomeNavigation)
+                handler.postDelayed(confirmHomeNavigation, 1100L)
             }
             return
         }
-        launcherCandidateAt = 0L
+        // Any foreground app that is no longer the launcher cancels a
+        // candidate HOME event before it can relaunch Pause.
+        handler.removeCallbacks(confirmHomeNavigation)
 
         // Keep emergency controls, notification shade and power menu
         // accessible. Only a confirmed Recents/Overview surface returns to
@@ -1146,6 +1155,7 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         serviceHeartbeatAtMs = 0L
         handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(confirmHomeNavigation)
         ShortVideoDiagnostics.log(this, "PauseHealth", "Accessibility service unbound")
         return super.onUnbind(intent)
     }
@@ -1153,6 +1163,7 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         serviceHeartbeatAtMs = 0L
         handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(confirmHomeNavigation)
         hideShortNotice()
         hideOverlay()
         super.onDestroy()
