@@ -2961,6 +2961,147 @@ private fun ReviewScreen(
 }
 
 @Composable
+private fun CorrectionScreen(
+    apps: List<InstalledApp>,
+    alwaysApps: List<InstalledApp>,
+    selected: Set<String>,
+    onBack: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    BackHandler(enabled = true) { onBack() }
+    var draft by remember(selected) { mutableStateOf(selected) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showConfirmation by remember { mutableStateOf(false) }
+    val allApps = remember(apps, alwaysApps) {
+        (alwaysApps + apps).distinctBy { it.launchType.name + ":" + it.packageName }
+    }
+    val alwaysPackages = remember(alwaysApps) {
+        alwaysApps.map { it.packageName }.toSet()
+    }
+    val filteredApps = remember(allApps, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) allApps
+        else allApps.filter { it.label.contains(query, ignoreCase = true) }
+    }
+    val changed = draft != selected
+    val addedCount = (draft - selected).size
+    val removedCount = (selected - draft).size
+
+    SoftScreenBackground {
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp)
+        ) {
+            BrandHeader(compact = true)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Исправить выбор",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Вы можете один раз за эту Паузу полностью пересмотреть список. " +
+                    "Пока вы не подтвердили изменения, возможность сохраняется.",
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = PauseMuted
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Найти приложение") },
+                singleLine = true,
+                shape = RoundedCornerShape(17.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Выбрано: ${draft.size} · Добавить: $addedCount · Убрать: $removedCount",
+                color = PauseMuted,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA)),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    items(
+                        items = filteredApps,
+                        key = { it.launchType.name + ":" + it.packageName }
+                    ) { app ->
+                        val locked = app.packageName in alwaysPackages
+                        AppRow(
+                            app = app,
+                            checked = locked || app.packageName in draft,
+                            locked = locked,
+                            onChecked = { enabled ->
+                                if (!locked) {
+                                    draft = if (enabled) draft + app.packageName
+                                        else draft - app.packageName
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = { showConfirmation = true },
+                enabled = changed,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Подтвердить новый список")
+            }
+            Spacer(Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Вернуться без изменений")
+            }
+        }
+    }
+
+    if (showConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showConfirmation = false },
+            title = { Text("Подтвердить исправление?") },
+            text = {
+                Text(
+                    "Будут добавлены приложения: $addedCount, убраны: $removedCount. " +
+                        "После подтверждения возможность повторного выбора будет использована. " +
+                        "Убирать приложения и продлевать Паузу по-прежнему можно."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmation = false
+                    if (draft != selected) onConfirm(draft)
+                }) {
+                    Text("Подтвердить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmation = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+}
+
+@Composable
 private fun ActiveScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
