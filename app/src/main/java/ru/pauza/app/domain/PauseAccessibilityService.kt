@@ -111,6 +111,11 @@ class PauseAccessibilityService : AccessibilityService() {
     private var lastAllowedForegroundPackage: String? = null
     private var blockedOriginPackage: String? = null
     private var returnAttemptId = 0
+    // While deliberately leaving a blocked window, wait briefly for Android
+    // to foreground the requested safe destination instead of re-blocking
+    // the transient window during the Activity/Back animation.
+    private var returnNavigationPendingUntil = 0L
+    private var returnExpectedPackage: String? = null
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -186,6 +191,42 @@ class PauseAccessibilityService : AccessibilityService() {
             hideShortNotice()
             hideOverlay()
             return
+        }
+
+        // Our own accessibility overlay receives package=ru.pauza.app
+        // events and takes accessibility focus. That is NOT evidence that
+        // MainActivity is in front: the underlying blocked Activity may still
+        // be visible. Keep the overlay stable until the user taps its action.
+        if (overlay != null) {
+            if (isRecentsNavigationEvent(event)) {
+                ShortVideoDiagnostics.log(this, "PauseNavigation", "RECENTS while blocker visible")
+                hideOverlay()
+                returnToPause()
+                return
+            }
+            val focusedSystemUi = windows.any { window ->
+                window.type == AccessibilityWindowInfo.TYPE_SYSTEM &&
+                    window.isFocused &&
+                    window.root?.packageName?.toString() == SYSTEM_UI_PACKAGE
+            }
+            if (focusedSystemUi) {
+                // Allow explicitly focused Android system surfaces, including
+                // critical OS controls. A background SystemUI window is NOT
+                // enough to dismiss the blocker.
+                hideOverlay()
+            }
+            return
+        }
+
+        // Return initiated by the user through the blocker button: ignore
+        // intermediate, still-blocked Activities until the chosen destination
+        // has been foregrounded or the bounded grace interval expires.
+        if (returnNavigationPendingUntil > SystemClock.elapsedRealtime()) {
+            val visible = resolveForegroundPackage(event)
+            if (visible != returnExpectedPackage) return
+            ShortVideoDiagnostics.log(this, "PauseReturn", "restored destination=$visible")
+            returnNavigationPendingUntil = 0L
+            returnExpectedPackage = null
         }
 
         // HOME and the launcher-owned Recents screen are navigation,
@@ -817,6 +858,10 @@ class PauseAccessibilityService : AccessibilityService() {
     private fun returnToPause(fromOverlayTap: Boolean = false) {
         Log.i("PauseTrace", "returnToPause called tap=$fromOverlayTap overlay=${overlay != null} current=${resolveForegroundPackage(null)}")
         val now = SystemClock.elapsedRealtime()
+        if (fromOverlayTap) {
+            returnExpectedPackage = packageName
+            returnNavigationPendingUntil = now + 2_800L
+        }
         // A user tap must never be discarded by the watchdog debounce.
         if (!fromOverlayTap && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
         lastReturnAt = now
@@ -847,7 +892,8 @@ class PauseAccessibilityService : AccessibilityService() {
         // Some Android 14/15 builds refuse or delay the direct background
         // launch. Retry via PendingIntent only if the notice remains visible.
         handler.postDelayed({
-            if (overlay == null || store.sessionEndEpochMs <= System.currentTimeMillis()) {
+            if (returnNavigationPendingUntil <= SystemClock.elapsedRealtime() ||
+                store.sessionEndEpochMs <= System.currentTimeMillis()) {
                 return@postDelayed
             }
             val creatorOptions = if (Build.VERSION.SDK_INT >= 35) {
@@ -875,7 +921,8 @@ class PauseAccessibilityService : AccessibilityService() {
             }
         }, 420L)
         handler.postDelayed({
-            if (overlay != null && store.sessionEndEpochMs > System.currentTimeMillis()) {
+            if (returnNavigationPendingUntil > SystemClock.elapsedRealtime() &&
+                store.sessionEndEpochMs > System.currentTimeMillis()) {
                 runCatching { startActivity(intent) }.onFailure {
                     Log.e("PauseProtection", "Final overlay-tap return retry failed", it)
                 }
@@ -891,20 +938,26 @@ class PauseAccessibilityService : AccessibilityService() {
         val target = blockedOriginPackage?.takeIf {
             it in store.selectedPackages + appsRepository.alwaysAllowedPackages()
         }
+        // The overlay is a real focusable window. Remove it on the actual
+        // button tap; otherwise Back and activity launches act underneath it.
+        hideOverlay()
         if (target == null) {
             ShortVideoDiagnostics.log(this, "PauseReturn", "no origin; opening Pause")
             returnToPause(fromOverlayTap = true)
             return
         }
 
+        returnExpectedPackage = target
+        returnNavigationPendingUntil = SystemClock.elapsedRealtime() + 3_600L
         val attempt = ++returnAttemptId
         ShortVideoDiagnostics.log(this, "PauseReturn", "return tapped target=$target")
         performGlobalAction(GLOBAL_ACTION_BACK)
 
         handler.postDelayed({
-            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (attempt != returnAttemptId) return@postDelayed
             if (resolveForegroundPackage(null) == target) {
-                hideOverlay()
+                returnNavigationPendingUntil = 0L
+                returnExpectedPackage = null
                 return@postDelayed
             }
 
@@ -928,9 +981,10 @@ class PauseAccessibilityService : AccessibilityService() {
         }, 700L)
 
         handler.postDelayed({
-            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (attempt != returnAttemptId) return@postDelayed
             if (resolveForegroundPackage(null) == target) {
-                hideOverlay()
+                returnNavigationPendingUntil = 0L
+                returnExpectedPackage = null
                 return@postDelayed
             }
 
@@ -971,9 +1025,10 @@ class PauseAccessibilityService : AccessibilityService() {
         }, 1650L)
 
         handler.postDelayed({
-            if (attempt != returnAttemptId || overlay == null) return@postDelayed
+            if (attempt != returnAttemptId) return@postDelayed
             if (resolveForegroundPackage(null) == target) {
-                hideOverlay()
+                returnNavigationPendingUntil = 0L
+                returnExpectedPackage = null
                 return@postDelayed
             }
             ShortVideoDiagnostics.log(this, "PauseReturn", "fallback to Pause target=$target")
