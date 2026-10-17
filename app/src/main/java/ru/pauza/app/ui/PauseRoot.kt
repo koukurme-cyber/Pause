@@ -2911,7 +2911,7 @@ private fun ReviewScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            "Во время Паузы не получится сократить время и добавить новые приложения.",
+                            "Во время Паузы нельзя сократить время. Один раз можно исправить список доступных приложений.",
                             modifier = Modifier.weight(1f),
                             color = Color(0xFF8E2B22),
                             fontWeight = FontWeight.SemiBold,
