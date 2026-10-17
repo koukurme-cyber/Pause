@@ -2750,39 +2750,76 @@ private fun ReviewScreen(
 
     SoftScreenBackground {
         Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(18.dp)
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            // Review content scrolls as one surface; the hold-to-start actions
+            // remain visible instead of squeezing the app grid to zero height.
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
             ) {
-                BrandHeader(
-                    modifier = Modifier.weight(1f),
-                    compact = true
-                )
-                IconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.size(48.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_settings),
-                        contentDescription = "Настройки",
-                        tint = Color(0xFF263029),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    BrandHeader(modifier = Modifier.weight(1f), compact = true)
+                    IconButton(onClick = onOpenSettings, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_settings),
+                            contentDescription = "Настройки",
+                            tint = Color(0xFF263029),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Проверьте перед запуском",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Проверьте перед запуском",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(10.dp))
+                // Show the chosen applications before the long advisory so the
+                // first row is visible even on shorter phones.
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)
+                    ),
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E4DD))
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(13.dp)) {
+                        Text(
+                            "Доступные приложения (${reviewApps.size})",
+                            color = PauseMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = .6.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        if (reviewApps.isEmpty()) {
+                            Text("Не выбрано ни одного приложения", color = PauseMuted)
+                        } else {
+                            reviewApps.chunked(4).forEachIndexed { rowIndex, rowApps ->
+                                if (rowIndex > 0) Spacer(Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    rowApps.forEach { app ->
+                                        Box(Modifier.weight(1f)) {
+                                            LauncherAppIcon(app = app, compact = true)
+                                        }
+                                    }
+                                    repeat(4 - rowApps.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D8)),
                 shape = RoundedCornerShape(22.dp)
@@ -2851,9 +2888,7 @@ private fun ReviewScreen(
                 }
             }
 
-            // Keep the review picker in a fixed-height card, outside the
-            // weighted launcher grid: the grid can shrink on smaller screens.
-            Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(10.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
@@ -2873,43 +2908,10 @@ private fun ReviewScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFA).copy(alpha = .90f)),
-                shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E4DD))
-            ) {
-                Column(Modifier.fillMaxSize().padding(15.dp)) {
-                    Text(
-                        "Доступные приложения",
-                        color = PauseMuted,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = .8.sp
-                    )
-                    Spacer(Modifier.height(12.dp))
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                        contentPadding = PaddingValues(bottom = 8.dp)
-                    ) {
-                        items(
-                            items = reviewApps,
-                            key = { it.launchType.name + ":" + it.packageName }
-                        ) { app ->
-                            LauncherAppIcon(app = app, useSystemLauncherSize = true)
-                        }
-                    }
-                }
+                Spacer(Modifier.height(10.dp))
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
             HoldButton(onConfirmed = onStart, enabled = duration.isValid)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
