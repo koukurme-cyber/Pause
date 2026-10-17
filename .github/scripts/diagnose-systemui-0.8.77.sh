@@ -45,7 +45,7 @@ click_return() {
   height=$(echo "$size" | cut -dx -f2)
   [ -n "$width" ] && [ -n "$height" ] || fail "Screen resolution not found"
   # The button is centered at about 68 percent of the Pixel 6 portrait display.
-  adb shell input tap $((width/2)) $((height*68/100))
+  adb shell input tap $((width/2)) $((height*70/100))
   for i in $(seq 1 22); do
     if adb shell dumpsys activity activities | grep -Eq "topResumedActivity=.*$PKG/|mResumedActivity=.*$PKG/"; then
       if ! overlay_visible; then
@@ -213,7 +213,7 @@ click_return_to_allowed() {
   size=$(adb shell wm size | tr -d '\r' | awk -F': ' '/Physical size/ {print $2}' | tail -n 1)
   width=$(echo "$size" | cut -dx -f1)
   height=$(echo "$size" | cut -dx -f2)
-  adb shell input tap $((width/2)) $((height*68/100))
+  adb shell input tap $((width/2)) $((height*70/100))
   for i in $(seq 1 22); do
     if adb shell dumpsys activity activities | grep -E 'topResumedActivity=|mResumedActivity' | grep -Fq "$expected/"; then
       if ! overlay_visible; then
