@@ -75,7 +75,33 @@ class PauseStore(context: Context) {
 
     var sessionEndEpochMs: Long
         get() = prefs.getLong(KEY_SESSION_END, 0L)
-        set(value) { prefs.edit().putLong(KEY_SESSION_END, value).apply() }
+        set(value) {
+            val now = System.currentTimeMillis()
+            val startsNewSession = value > now && prefs.getLong(KEY_SESSION_END, 0L) <= now
+            prefs.edit().apply {
+                putLong(KEY_SESSION_END, value)
+                if (startsNewSession) putBoolean(KEY_SELECTION_CORRECTION_USED, false)
+            }.apply()
+        }
+
+    /** One complete selection correction is permitted for each active session. */
+    var selectionCorrectionUsed: Boolean
+        get() = prefs.getBoolean(KEY_SELECTION_CORRECTION_USED, false)
+        private set(value) { prefs.edit().putBoolean(KEY_SELECTION_CORRECTION_USED, value).apply() }
+
+    /** Atomically applies a correction so the allowance cannot be consumed twice. */
+    @Synchronized
+    fun confirmSelectionCorrection(packages: Set<String>): Boolean {
+        if (sessionEndEpochMs <= System.currentTimeMillis() || selectionCorrectionUsed) {
+            return false
+        }
+        return prefs.edit()
+            .putStringSet(KEY_SELECTED, packages.toSet())
+            .putStringSet(KEY_MANUAL_SELECTED, packages.toSet())
+            .remove(KEY_ACTIVE_SAVED_SET_NAME)
+            .putBoolean(KEY_SELECTION_CORRECTION_USED, true)
+            .commit()
+    }
 
     var firstSetupCompleted: Boolean
         get() = prefs.getBoolean(KEY_FIRST_SETUP_COMPLETED, false)
@@ -114,7 +140,10 @@ class PauseStore(context: Context) {
         set(value) { prefs.edit().putInt(KEY_PREVIOUS_INTERRUPTION_FILTER, value).apply() }
 
     fun clearSession() {
-        prefs.edit().remove(KEY_SESSION_END).apply()
+        prefs.edit()
+            .remove(KEY_SESSION_END)
+            .remove(KEY_SELECTION_CORRECTION_USED)
+            .apply()
     }
 
     private fun decodeSavedAppSets(raw: String?): List<SavedAppSet> {
@@ -251,6 +280,7 @@ class PauseStore(context: Context) {
         private const val KEY_ACTIVE_SAVED_SET_NAME = "active_saved_set_name"
         private const val KEY_HANDLED_SCHEDULE_OCCURRENCES = "handled_schedule_occurrences"
         private const val KEY_SESSION_END = "session_end_epoch_ms"
+        private const val KEY_SELECTION_CORRECTION_USED = "selection_correction_used"
         private const val KEY_FIRST_SETUP_COMPLETED = "first_setup_completed"
         private const val KEY_RESTRICTED_SETTINGS_CONFIRMED = "restricted_settings_confirmed"
         private const val KEY_SETUP_CHECKLIST_COMPLETED = "setup_checklist_completed"
