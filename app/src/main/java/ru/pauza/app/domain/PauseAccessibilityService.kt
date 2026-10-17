@@ -56,6 +56,7 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private var lastReturnAt = 0L
+    private var lastTraceAt = 0L
     private val confirmHomeNavigation = Runnable {
         // Only a real launcher window-state change starts this check. A
         // transient launcher appearance during app switching does not.
@@ -186,6 +187,7 @@ class PauseAccessibilityService : AccessibilityService() {
         // without displaying the gentle blocked-app notice.
         val foregroundPackage = resolveForegroundPackage(event) ?: return
         if (foregroundPackage in launcherPackages) {
+            traceForeground("LAUNCHER", event, foregroundPackage)
             if (
                 event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
                 event.packageName?.toString() in launcherPackages
@@ -203,6 +205,7 @@ class PauseAccessibilityService : AccessibilityService() {
         // accessible. Only a confirmed Recents/Overview surface returns to
         // Pause directly; do not suppress ordinary SystemUI interaction.
         if (hasActiveSystemUiSurface(event)) {
+            traceForeground("SYSTEMUI_SKIP", event, foregroundPackage)
             hideShortNotice()
             hideOverlay()
             if (isRecentsNavigationEvent(event)) {
@@ -244,6 +247,7 @@ class PauseAccessibilityService : AccessibilityService() {
         // briefly show the normal desktop, then Usage Access detects that launcher
         // as foreground and returns the user to the active Pause.
         if (foregroundPackage == packageName) {
+            traceForeground("SELF", event, foregroundPackage)
             lastAllowedForegroundPackage = null
             hideOverlay()
             return
@@ -258,6 +262,7 @@ class PauseAccessibilityService : AccessibilityService() {
             packageName
 
         if (foregroundPackage in allowed) {
+            traceForeground("ALLOWED", event, foregroundPackage)
             lastAllowedForegroundPackage = foregroundPackage
             hideOverlay()
 
@@ -466,6 +471,7 @@ class PauseAccessibilityService : AccessibilityService() {
         // Keep it visible until the user chooses to return; automatic
         // relaunching would dismiss the message before it can be read.
         // If an OEM rejects the accessibility overlay, preserve enforcement.
+        traceForeground("BLOCK", event, foregroundPackage)
         if (!showOverlay(end)) returnToPause()
     }
 
@@ -692,6 +698,21 @@ class PauseAccessibilityService : AccessibilityService() {
             ?: rootInActiveWindow?.takeIf {
                 it.packageName?.toString() == targetPackage
             }
+
+    private fun traceForeground(reason: String, event: AccessibilityEvent?, foreground: String?) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTraceAt < 850L) return
+        lastTraceAt = now
+        val visible = windows.take(12).joinToString(separator = ";") { win ->
+            "${win.type}:${win.isFocused}:${win.isActive}:${win.root?.packageName?.toString()}"
+        }
+        Log.i(
+            "PauseTrace",
+            "reason=$reason foreground=$foreground usage=${UsageAccessMonitor.foregroundPackage(this)} " +
+                "event=${event?.packageName}/${event?.eventType} " +
+                "overlay=${overlay != null} windows=[$visible]"
+        )
+    }
 
     private fun isRecentsNavigationEvent(event: AccessibilityEvent?): Boolean {
         if (event == null) return false
