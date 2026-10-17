@@ -243,18 +243,35 @@ adb shell am force-stop "$PKG"
 sed -i "s/value=\"$END\"/value=\"0\"/" /tmp/qa-prefs.xml
 adb push /tmp/qa-prefs.xml /data/local/tmp/qa-prefs.xml >/dev/null
 adb shell run-as "$PKG" cp /data/local/tmp/qa-prefs.xml "/data/user/0/$PKG/shared_prefs/pause_store.xml"
+# force-stop suspends a running accessibility service. Restart its enabled
+# setting so the Setup Continue button is available for preview verification.
+adb shell settings put secure enabled_accessibility_services "" || true
+adb shell settings put secure accessibility_enabled 0 || true
+adb shell settings put secure enabled_accessibility_services "$SERVICE"
+adb shell settings put secure accessibility_enabled 1
 adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
-sleep 3
-if ! tap_ui "Продолжить"; then
-  echo "SKIP: review preview navigation could not find Continue" >> "$DIR/results.txt"
-else
+for i in $(seq 1 15); do
+  if is_bound; then break; fi
+  sleep 0.5
+done
+if ! is_bound; then
+  adb shell am start -W -a android.settings.ACCESSIBILITY_SETTINGS >/dev/null 2>&1 || true
   sleep 2
-  snapshot review-preview
-  if ! has_text "Доступные приложения"; then fail "review app-list heading missing"; fi
-  if ! has_text "Телефон"; then
-    echo "WARN: review icon label not surfaced to uiautomator; screenshot captured" >> "$DIR/results.txt"
-  else
-    echo "PASS: review selected app icon surfaced" | tee -a "$DIR/results.txt"
-  fi
+  tap_ui "Пауза" || true
+  sleep 1
+  tap_ui "Use Пауза" || tap_ui "Use Pauza" || true
+  sleep 1
+  tap_ui "Allow" || tap_ui "Разрешить" || true
+  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
+  sleep 2
 fi
+if ! is_bound; then fail "cannot re-enable service for review UI test after force-stop"; fi
+sleep 2
+if has_text "Защита недоступна"; then fail "review Setup still reports protection disabled"; fi
+tap_ui "Продолжить" || fail "review Setup Continue not available"
+sleep 2
+snapshot review-preview
+has_text "Доступные приложения" || fail "review app-list heading missing"
+has_text "Телефон" || fail "review selected Phone icon missing"
+echo "PASS: review selected applications rendered" | tee -a "$DIR/results.txt"
 echo "ALL TESTS PASSED" | tee -a "$DIR/results.txt"
