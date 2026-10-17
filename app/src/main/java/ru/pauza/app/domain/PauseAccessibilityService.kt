@@ -815,6 +815,7 @@ class PauseAccessibilityService : AccessibilityService() {
     }
 
     private fun returnToPause(fromOverlayTap: Boolean = false) {
+        Log.i("PauseTrace", "returnToPause called tap=$fromOverlayTap overlay=${overlay != null} current=${resolveForegroundPackage(null)}")
         val now = SystemClock.elapsedRealtime()
         // A user tap must never be discarded by the watchdog debounce.
         if (!fromOverlayTap && now - lastReturnAt < RETURN_DEBOUNCE_MS) return
@@ -1119,7 +1120,10 @@ class PauseAccessibilityService : AccessibilityService() {
             background = rounded(Color.rgb(229, 237, 227), 16)
             isClickable = true
             isFocusable = true
-            setOnClickListener { returnFromBlockedApp() }
+            setOnClickListener {
+                Log.i("PauseTrace", "blocked notice BUTTON_CLICK target=$blockedOriginPackage")
+                returnFromBlockedApp()
+            }
         }
         content.addView(
             returnButton,
