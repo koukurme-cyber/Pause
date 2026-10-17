@@ -97,7 +97,7 @@ import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.max
 
-private enum class Screen { SETUP, SETTINGS, REVIEW, ACTIVE }
+private enum class Screen { SETUP, SETTINGS, REVIEW, ACTIVE, CORRECTION }
 private data class PauseDuration(
     val days: Int = 0,
     val hours: Int = 1,
@@ -209,6 +209,7 @@ fun PauseRoot(
     var alwaysApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(store.selectedPackages) }
+    var correctionUsed by remember { mutableStateOf(store.selectionCorrectionUsed) }
     var manualSelected by remember { mutableStateOf(store.manualSelectedPackages) }
     var savedSets by remember { mutableStateOf(store.savedAppSets) }
     var activeSavedSetName by remember { mutableStateOf(store.activeSavedSetName) }
@@ -231,6 +232,7 @@ fun PauseRoot(
             val storedEnd = store.sessionEndEpochMs
             if (storedEnd > System.currentTimeMillis() && storedEnd != sessionEnd) {
                 selected = store.selectedPackages
+                correctionUsed = store.selectionCorrectionUsed
                 activeSavedSetName = store.activeSavedSetName
                 sessionEnd = storedEnd
                 screen = Screen.ACTIVE
@@ -487,6 +489,7 @@ fun PauseRoot(
                 sessionEnd = System.currentTimeMillis() + duration.totalMinutes * 60_000L
                 store.selectedPackages = selected
                 store.sessionEndEpochMs = sessionEnd
+                correctionUsed = store.selectionCorrectionUsed
                 blocker.start(
                     selected + appsRepository.alwaysAllowedPackages(),
                     sessionEnd
@@ -504,6 +507,14 @@ fun PauseRoot(
             apps = apps,
             alwaysApps = alwaysApps,
             selected = selected,
+            correctionUsed = correctionUsed,
+            onCorrectSelection = {
+                if (sessionEnd > System.currentTimeMillis() && !store.selectionCorrectionUsed) {
+                    screen = Screen.CORRECTION
+                } else {
+                    correctionUsed = store.selectionCorrectionUsed
+                }
+            },
             sessionEnd = sessionEnd,
             onExtend = { extra ->
                 val currentEnd = store.sessionEndEpochMs
@@ -538,6 +549,7 @@ fun PauseRoot(
                 NotificationSilencer.restoreAfterPause(context, store)
                 store.clearSession()
                 sessionEnd = 0L
+                correctionUsed = false
                 screen = Screen.SETUP
             },
             onTapExit = {
@@ -545,7 +557,29 @@ fun PauseRoot(
                 NotificationSilencer.restoreAfterPause(context, store)
                 store.clearSession()
                 sessionEnd = 0L
+                correctionUsed = false
                 screen = Screen.SETUP
+            }
+        )
+
+        Screen.CORRECTION -> CorrectionScreen(
+            apps = apps,
+            alwaysApps = alwaysApps,
+            selected = selected,
+            onBack = { screen = Screen.ACTIVE },
+            onConfirm = { next ->
+                val selectable = apps.map { it.packageName }.toSet()
+                val cleanSelection = next.intersect(selectable)
+                if (store.confirmSelectionCorrection(cleanSelection)) {
+                    selected = cleanSelection
+                    manualSelected = cleanSelection
+                    activeSavedSetName = null
+                    correctionUsed = true
+                    screen = Screen.ACTIVE
+                } else {
+                    correctionUsed = store.selectionCorrectionUsed
+                    screen = Screen.ACTIVE
+                }
             }
         )
     }
@@ -2931,6 +2965,8 @@ private fun ActiveScreen(
     apps: List<InstalledApp>,
     alwaysApps: List<InstalledApp>,
     selected: Set<String>,
+    correctionUsed: Boolean,
+    onCorrectSelection: () -> Unit,
     sessionEnd: Long,
     onExtend: (PauseDuration) -> Unit,
     onRemoveApp: (String) -> Unit,
@@ -3010,23 +3046,47 @@ private fun ActiveScreen(
         ) {
             Spacer(Modifier.height(10.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(9.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (serviceUnresponsive || accessibilityDisabled) Color(0xFFE06438)
-                            else Color(0xFF3DB94A)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (serviceUnresponsive || accessibilityDisabled) Color(0xFFE06438)
+                                else Color(0xFF3DB94A)
+                            )
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        "Пауза",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF172119)
+                    )
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    if (correctionUsed) {
+                        Text(
+                            "Выбор уже исправлен",
+                            color = PauseMuted,
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.End,
+                            lineHeight = 12.sp
                         )
-                )
-                Spacer(Modifier.width(9.dp))
-                Text(
-                    "Пауза",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF172119)
-                )
+                    } else {
+                        TextButton(
+                            onClick = onCorrectSelection,
+                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp)
+                        ) {
+                            Text("Исправить выбор", fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(4.dp))
@@ -3255,7 +3315,10 @@ private fun ActiveScreen(
                 text = {
                     Column {
                         Text(
-                            "Приложение станет недоступным до окончания Паузы. Добавить его обратно сейчас нельзя.",
+                            if (correctionUsed)
+                                "Приложение станет недоступным до окончания Паузы. Повторное добавление недоступно."
+                            else
+                                "Приложение станет недоступным. При необходимости можно один раз исправить весь список.",
                             color = PauseMuted,
                             fontSize = 14.sp
                         )
@@ -3303,7 +3366,12 @@ private fun ActiveScreen(
                 onDismissRequest = { appToRemove = null },
                 title = { Text("Убрать «" + removing.label + "»?") },
                 text = {
-                    Text("До конца Паузы приложение будет заблокировано. Вернуть его в список сейчас нельзя.")
+                    Text(
+                        if (correctionUsed)
+                            "До конца Паузы приложение будет заблокировано. Исправление списка уже использовано."
+                        else
+                            "Приложение станет недоступным. Вернуть его можно во время единственного исправления выбора."
+                    )
                 },
                 confirmButton = {
                     TextButton(onClick = {
