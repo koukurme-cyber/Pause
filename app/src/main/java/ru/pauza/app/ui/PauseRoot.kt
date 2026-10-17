@@ -3008,7 +3008,7 @@ private fun ActiveScreen(
                 .padding(horizontal = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(10.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -3023,7 +3023,7 @@ private fun ActiveScreen(
                 Spacer(Modifier.width(9.dp))
                 Text(
                     "Пауза",
-                    fontSize = 19.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF172119)
                 )
@@ -3058,7 +3058,7 @@ private fun ActiveScreen(
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
             val timerTapInteraction = remember { MutableInteractionSource() }
 
@@ -3096,12 +3096,12 @@ private fun ActiveScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         Modifier
-                            .size(54.dp)
+                            .size(44.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .background(Color(0xFFE7F3E2).copy(alpha = .94f)),
                         contentAlignment = Alignment.Center
@@ -3109,11 +3109,11 @@ private fun ActiveScreen(
                         Image(
                             painter = painterResource(R.drawable.ic_pauza_leaf),
                             contentDescription = null,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                     }
 
-                    Spacer(Modifier.width(17.dp))
+                    Spacer(Modifier.width(12.dp))
 
                     Column(
                         modifier = Modifier.weight(1f)
@@ -3129,10 +3129,10 @@ private fun ActiveScreen(
                             color = Color(0xFF111713),
                             fontSize = when {
                                 remaining >= 86_400_000L -> 31.sp
-                                remaining >= 3_600_000L -> 38.sp
-                                else -> 42.sp
+                                remaining >= 3_600_000L -> 34.sp
+                                else -> 37.sp
                             },
-                            lineHeight = 44.sp,
+                            lineHeight = 40.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
@@ -3140,7 +3140,7 @@ private fun ActiveScreen(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 "Подождите до окончания Паузы. Все остальные приложения недоступны.",
                 color = Color(0xFF596359),
@@ -3149,7 +3149,7 @@ private fun ActiveScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 18.dp)
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3173,28 +3173,38 @@ private fun ActiveScreen(
                     Text("Убрать приложение", maxLines = 1, fontSize = 12.sp)
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(22.dp),
-                contentPadding = PaddingValues(top = 2.dp, bottom = 22.dp),
-                flingBehavior = gentleFlingBehavior
-            ) {
-                items(
-                    items = shortcuts,
-                    key = { it.launchType.name + ":" + it.packageName }
-                ) { app ->
-                    LauncherAppIcon(
-                        app = app,
-                        onClick = { onLaunch(app) },
-                        compact = true,
-                        useSystemLauncherSize = true
-                    )
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val rowsVisible = ((shortcuts.size + 3) / 4).coerceIn(1, 6)
+                val rowGap = 4.dp
+                val cellHeight = (maxHeight - rowGap * (rowsVisible - 1)) / rowsVisible
+                val adaptiveIconSize = (cellHeight - 30.dp).coerceIn(24.dp, 48.dp)
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(rowGap),
+                    contentPadding = PaddingValues(0.dp),
+                    userScrollEnabled = shortcuts.size > 24
+                ) {
+                    items(
+                        items = shortcuts,
+                        key = { it.launchType.name + ":" + it.packageName }
+                    ) { app ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(cellHeight),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            LauncherAppIcon(
+                                app = app,
+                                onClick = { onLaunch(app) },
+                                compact = true,
+                                iconSizeOverride = adaptiveIconSize
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -3319,6 +3329,7 @@ private fun LauncherAppIcon(
     onClick: (() -> Unit)? = null,
     compact: Boolean = false,
     useSystemLauncherSize: Boolean = false,
+    iconSizeOverride: androidx.compose.ui.unit.Dp? = null,
 ) {
     val interactionModifier =
         if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
@@ -3332,18 +3343,20 @@ private fun LauncherAppIcon(
     }
 
     val iconSize = when {
+        iconSizeOverride != null -> iconSizeOverride
         useSystemLauncherSize -> systemLauncherIconSize
         compact -> 48.dp
         else -> 54.dp
     }
     val tileSize = when {
+        iconSizeOverride != null -> iconSize + 4.dp
         useSystemLauncherSize -> iconSize + 8.dp
         compact -> 58.dp
         else -> 66.dp
     }
     val radius = if (compact) 18.dp else 20.dp
-    val labelSize = if (compact) 11.sp else 12.sp
-    val labelLineHeight = if (compact) 13.sp else 14.sp
+    val labelSize = if (iconSizeOverride != null) 10.sp else if (compact) 11.sp else 12.sp
+    val labelLineHeight = if (iconSizeOverride != null) 11.sp else if (compact) 13.sp else 14.sp
 
     Column(
         modifier = Modifier
@@ -3388,7 +3401,7 @@ private fun LauncherAppIcon(
             }
         }
 
-        Spacer(Modifier.height(if (compact) 6.dp else 7.dp))
+        Spacer(Modifier.height(if (iconSizeOverride != null) 3.dp else if (compact) 6.dp else 7.dp))
         Text(
             text = app.label,
             fontSize = labelSize,
