@@ -198,6 +198,9 @@ class PauseAccessibilityService : AccessibilityService() {
         // MainActivity is in front: the underlying blocked Activity may still
         // be visible. Keep the overlay stable until the user taps its action.
         if (overlay != null) {
+            // Keep countdown live while the notice stays open. Previously
+            // the timer was updated only when showOverlay() was re-entered.
+            updateOverlayTimer(end)
             if (isRecentsNavigationEvent(event)) {
                 ShortVideoDiagnostics.log(this, "PauseNavigation", "RECENTS while blocker visible")
                 hideOverlay()
