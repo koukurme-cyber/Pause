@@ -3230,15 +3230,7 @@ private fun ActiveScreen(
                     )
                 }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    if (correctionUsed) {
-                        Text(
-                            "Выбор уже исправлен",
-                            color = PauseMuted,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.End,
-                            lineHeight = 12.sp
-                        )
-                    } else {
+                    if (!correctionUsed) {
                         TextButton(
                             onClick = onCorrectSelection,
                             contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp)
