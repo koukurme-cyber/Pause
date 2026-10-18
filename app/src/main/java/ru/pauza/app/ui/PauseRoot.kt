@@ -3390,7 +3390,12 @@ private fun ActiveScreen(
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 val rowsVisible = ((shortcuts.size + 3) / 4).coerceIn(1, 6)
                 val rowGap = 4.dp
-                val cellHeight = (maxHeight - rowGap * (rowsVisible - 1)) / rowsVisible
+                // Do not stretch a partially filled icon grid across the entire screen.
+                // Keep remaining apps in consecutive compact rows after a selection
+                // correction or a regular app removal. For many apps, still shrink
+                // rows as needed to retain the six-row (24 icon) layout.
+                val cellHeight = ((maxHeight - rowGap * (rowsVisible - 1)) / rowsVisible)
+                    .coerceAtMost(84.dp)
                 val adaptiveIconSize = (cellHeight - 30.dp).coerceIn(24.dp, 48.dp)
 
                 LazyVerticalGrid(
