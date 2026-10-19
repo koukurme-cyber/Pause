@@ -89,7 +89,7 @@ class InstalledAppsRepository(private val context: Context) {
     fun launch(app: InstalledApp): Boolean {
         val intent = when (app.launchType) {
             AppLaunchType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))
-            AppLaunchType.MESSAGES -> Intent(Intent.ACTION_SENDTO, Uri.parse("sms:"))
+            AppLaunchType.MESSAGES -> pm.getLaunchIntentForPackage(app.packageName)
             AppLaunchType.PACKAGE -> pm.getLaunchIntentForPackage(app.packageName)
         } ?: return false
 
