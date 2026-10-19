@@ -1,6 +1,7 @@
 package ru.pauza.app.ui
 
 import android.app.Activity
+import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -63,6 +64,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.PlatformTextStyle
@@ -3387,24 +3389,36 @@ private fun ActiveScreen(
             }
             Spacer(Modifier.height(6.dp))
 
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                val rowsVisible = ((shortcuts.size + 3) / 4).coerceIn(1, 6)
+            BoxWithConstraints(
+                Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                val configuration = LocalConfiguration.current
+                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val gridColumns = if (!isLandscape) 4 else if (maxWidth >= 760.dp) 8 else 6
+                val gridMaxWidth = if (gridColumns == 8) 680.dp else if (isLandscape) 560.dp else maxWidth
+                val rowsVisible = ((shortcuts.size + gridColumns - 1) / gridColumns)
+                    .coerceIn(1, if (isLandscape) 4 else 6)
                 val rowGap = 4.dp
-                // Do not stretch a partially filled icon grid across the entire screen.
-                // Keep remaining apps in consecutive compact rows after a selection
-                // correction or a regular app removal. For many apps, still shrink
-                // rows as needed to retain the six-row (24 icon) layout.
-                val cellHeight = ((maxHeight - rowGap * (rowsVisible - 1)) / rowsVisible)
-                    .coerceAtMost(84.dp)
-                val adaptiveIconSize = (cellHeight - 30.dp).coerceIn(24.dp, 48.dp)
+                // Portrait keeps the existing adaptive 24-icon layout.
+                // Landscape uses stable icon sizes and a bounded, centered grid;
+                // vertical scrolling handles the reduced available height.
+                val cellHeight = if (isLandscape) 84.dp else
+                    ((maxHeight - rowGap * (rowsVisible - 1)) / rowsVisible)
+                        .coerceAtMost(84.dp)
+                val adaptiveIconSize = if (isLandscape) 48.dp else
+                    (cellHeight - 30.dp).coerceIn(24.dp, 48.dp)
 
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    modifier = Modifier.fillMaxSize(),
+                    columns = GridCells.Fixed(gridColumns),
+                    modifier = Modifier
+                        .widthIn(max = gridMaxWidth)
+                        .fillMaxWidth()
+                        .fillMaxHeight(),
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                     contentPadding = PaddingValues(0.dp),
-                    userScrollEnabled = shortcuts.size > 24
+                    userScrollEnabled = isLandscape || shortcuts.size > 24
                 ) {
                     items(
                         items = shortcuts,
