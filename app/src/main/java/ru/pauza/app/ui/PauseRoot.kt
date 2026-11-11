@@ -94,6 +94,9 @@ import ru.pauza.app.ui.theme.PauseGreen
 import ru.pauza.app.ui.theme.PauseGreenSoft
 import ru.pauza.app.ui.theme.PauseMuted
 import ru.pauza.app.ui.theme.PauseWarning
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.abs
@@ -1507,49 +1510,139 @@ private fun SavedSetsSettingsCard(
 private fun DurationPicker(
     duration: PauseDuration,
     onChange: (PauseDuration) -> Unit,
+    endFromEpochMs: Long? = null,
+    scheduleStartMinuteOfDay: Int? = null,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(90.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .height(32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(PauseMuted.copy(alpha = 0.09f))
-        )
-
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            DurationWheel(
-                value = duration.days,
-                max = 29,
-                modifier = Modifier.weight(1f),
-                formatter = { formatDaysWheel(it) },
-                onValueChange = { onChange(duration.copy(days = it)) }
-            )
-            DurationWheel(
-                value = duration.hours,
-                max = 23,
-                modifier = Modifier.weight(1f),
-                formatter = { "$it ч" },
-                onValueChange = { onChange(duration.copy(hours = it)) }
-            )
-            DurationWheel(
-                value = duration.minutes,
-                max = 59,
-                modifier = Modifier.weight(1f),
-                formatter = { "$it мин" },
-                onValueChange = { onChange(duration.copy(minutes = it)) }
-            )
+    var currentTimeMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(endFromEpochMs, scheduleStartMinuteOfDay) {
+        if (endFromEpochMs == null && scheduleStartMinuteOfDay == null) {
+            while (true) {
+                currentTimeMillis = System.currentTimeMillis()
+                delay(15_000L)
+            }
         }
     }
 
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(90.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(PauseMuted.copy(alpha = 0.09f))
+            )
+
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DurationWheel(
+                    value = duration.days,
+                    max = 29,
+                    modifier = Modifier.weight(1f),
+                    formatter = { formatDaysWheel(it) },
+                    onValueChange = { onChange(duration.copy(days = it)) }
+                )
+                DurationWheel(
+                    value = duration.hours,
+                    max = 23,
+                    modifier = Modifier.weight(1f),
+                    formatter = { "$it ч" },
+                    onValueChange = { onChange(duration.copy(hours = it)) }
+                )
+                DurationWheel(
+                    value = duration.minutes,
+                    max = 59,
+                    modifier = Modifier.weight(1f),
+                    formatter = { "$it мин" },
+                    onValueChange = { onChange(duration.copy(minutes = it)) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        if (duration.isValid) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (scheduleStartMinuteOfDay != null) "Закончится" else "Пауза закончится",
+                    color = PauseMuted,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    formatPauseEndTime(
+                        duration = duration,
+                        currentTimeMillis = currentTimeMillis,
+                        endFromEpochMs = endFromEpochMs,
+                        scheduleStartMinuteOfDay = scheduleStartMinuteOfDay,
+                    ),
+                    color = PauseGreen,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                )
+            }
+        } else {
+            Text(
+                "Выберите длительность",
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                color = PauseMuted,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+private fun formatPauseEndTime(
+    duration: PauseDuration,
+    currentTimeMillis: Long,
+    endFromEpochMs: Long?,
+    scheduleStartMinuteOfDay: Int?,
+): String {
+    if (scheduleStartMinuteOfDay != null) {
+        val endMinute = scheduleStartMinuteOfDay.toLong() + duration.totalMinutes
+        val minuteOfDay = (endMinute % 1_440L).toInt()
+        val clock = String.format(
+            Locale("ru", "RU"), "%02d:%02d", minuteOfDay / 60, minuteOfDay % 60
+        )
+        val daysAfterStart = endMinute / 1_440L
+        return when (daysAfterStart) {
+            0L -> "в $clock"
+            1L -> "в $clock следующего дня"
+            else -> "в $clock через ${formatDaysWheel(daysAfterStart.toInt())}"
+        }
+    }
+
+    val finishMillis = (endFromEpochMs ?: currentTimeMillis) +
+        duration.totalMinutes * 60_000L
+    val today = Calendar.getInstance().apply { timeInMillis = currentTimeMillis }
+    val tomorrow = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+    val finish = Calendar.getInstance().apply { timeInMillis = finishMillis }
+    val locale = Locale("ru", "RU")
+    val clock = SimpleDateFormat("HH:mm", locale).format(Date(finishMillis))
+
+    fun sameDay(a: Calendar, b: Calendar): Boolean =
+        a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
+            a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
+
+    return when {
+        sameDay(finish, today) -> "сегодня в $clock"
+        sameDay(finish, tomorrow) -> "завтра в $clock"
+        finish.get(Calendar.YEAR) == today.get(Calendar.YEAR) ->
+            SimpleDateFormat("d MMMM 'в' HH:mm", locale).format(Date(finishMillis))
+        else ->
+            SimpleDateFormat("d MMMM yyyy 'в' HH:mm", locale).format(Date(finishMillis))
+    }
 }
 
 @Composable
@@ -2011,6 +2104,7 @@ private fun SavedSetScheduleScreen(
         schedules.getOrNull(index)?.let { schedule ->
             ScheduleDurationDialog(
                 durationMinutes = schedule.durationMinutes,
+                startMinuteOfDay = schedule.startMinuteOfDay,
                 onDismiss = { durationRuleIndex = null },
                 onConfirm = { durationMinutes ->
                     onSchedulesChange(
@@ -2334,6 +2428,7 @@ private fun SavedSetScheduleScreen(
 @Composable
 private fun ScheduleDurationDialog(
     durationMinutes: Int,
+    startMinuteOfDay: Int,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
@@ -2361,7 +2456,8 @@ private fun ScheduleDurationDialog(
                 Spacer(Modifier.height(8.dp))
                 DurationPicker(
                     duration = duration,
-                    onChange = { duration = it }
+                    onChange = { duration = it },
+                    scheduleStartMinuteOfDay = startMinuteOfDay
                 )
             }
         },
@@ -3454,7 +3550,8 @@ private fun ActiveScreen(
                         Spacer(Modifier.height(12.dp))
                         DurationPicker(
                             duration = extension,
-                            onChange = { extension = it }
+                            onChange = { extension = it },
+                            endFromEpochMs = sessionEnd
                         )
                     }
                 },
