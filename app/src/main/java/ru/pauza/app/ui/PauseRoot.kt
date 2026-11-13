@@ -3446,6 +3446,18 @@ private fun ActiveScreen(
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "Закончится " + formatPauseEndTime(
+                                duration = PauseDuration(days = 0, hours = 0, minutes = 0),
+                                currentTimeMillis = System.currentTimeMillis(),
+                                endFromEpochMs = sessionEnd,
+                                scheduleStartMinuteOfDay = null,
+                            ),
+                            color = Color(0xFF245E39),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
                     }
                 }
             }
